@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Provision a bench aligned with Frappe v16 (version-16 branches).
+
+Upstream declares Python >=3.14 for frappe and erpnext on version-16; the dev
+image sets pyenv global to 3.14.x. Use --py-version only to override (e.g. pin
+3.14.2); do not use 3.10/3.11/3.12 for v16.
+"""
 import argparse
 import os
 import subprocess
@@ -31,6 +37,19 @@ def run_subprocess(command, cwd=None, env=None, check=True):
         cprint(f"Command failed: {' '.join(command)}", level=1)
         sys.exit(1)
 
+
+def bench_subprocess_env():
+    """Env for bench commands.
+
+    BENCH_DISABLE_UV avoids `uv venv --seed`, which downloads pip from PyPI and
+    fails when DNS/network is unavailable. Stdlib `venv` seeds pip locally.
+    Override by exporting BENCH_DISABLE_UV=0 before running this script.
+    """
+    e = os.environ.copy()
+    e.setdefault("BENCH_DISABLE_UV", "1")
+    return e
+
+
 def main():
     parser = get_args_parser()
     args = parser.parse_args()
@@ -45,8 +64,14 @@ def get_args_parser():
     parser.add_argument("-b", "--bench-name", type=str, default="development-bench")
     parser.add_argument("-s", "--site-name", type=str, default="development.cohenix")
     parser.add_argument("-r", "--frappe-repo", type=str, default=f"https://github.com/frappe/frappe.git")
-    parser.add_argument("-t", "--frappe-branch", type=str, default="develop")
-    parser.add_argument("-p", "--py-version", type=str, default=None)
+    parser.add_argument("-t", "--frappe-branch", type=str, default="version-16")
+    parser.add_argument(
+        "-p",
+        "--py-version",
+        type=str,
+        default=None,
+        help="Optional pyenv version for bench init (Frappe v16 needs 3.14.x, e.g. 3.14.2; omit to use default python3)",
+    )
     parser.add_argument("-n", "--node-version", type=str, default=None)
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-a", "--admin-password", type=str, default="admin")
@@ -59,7 +84,7 @@ def init_bench_if_not_exist(args):
     if os.path.exists(args.bench_name):
         cprint("Bench already exists. Only site will be created", level=3)
         return
-    env = os.environ.copy()
+    env = bench_subprocess_env()
     init_command = ""
     if args.node_version:
         init_command += f"nvm use {args.node_version};"
@@ -83,19 +108,21 @@ def init_bench_if_not_exist(args):
         ("redis_socketio", "redis://redis-socketio:6379"),
         ("developer_mode", "1"),
     ]
+    bench_cwd = os.path.join(os.getcwd(), args.bench_name)
     for key, value in config_pairs:
-        run_subprocess(["bench", "set-config", "-g", key, value], cwd=os.path.join(os.getcwd(), args.bench_name))
+        run_subprocess(
+            ["bench", "set-config", "-g", key, value],
+            cwd=bench_cwd,
+            env=bench_subprocess_env(),
+        )
 
 def create_site_in_bench(args):
     token = os.getenv("DEVELOPER_TOKEN")
+    env = bench_subprocess_env()
+    bench_cwd = os.path.join(os.getcwd(), args.bench_name)
     apps_to_get = [
-        ("payments", f"https://github.com/frappe/payments.git", "develop"),
-        ("erpnext", f"https://github.com/frappe/erpnext.git", "develop"),
-        ("hrms", f"https://github.com/frappe/hrms.git", "develop"),
-        ("telephony", f"https://github.com/frappe/telephony.git", "develop"),
-        ("crm", f"https://github.com/frappe/crm.git", "develop"),
-        ("helpdesk", f"https://github.com/frappe/helpdesk.git", "develop"),
-        ("lms", f"https://github.com/frappe/lms.git", "develop"),
+        ("erpnext", f"https://github.com/frappe/erpnext.git", "version-16"),
+        ("hrms", f"https://github.com/frappe/hrms.git", "version-16"),
     ]
 
     # Fetch apps
@@ -103,7 +130,8 @@ def create_site_in_bench(args):
         cprint(f"Fetching app {app_name} ...", level=2)
         run_subprocess(
             ["bench", "get-app", "--branch", app_branch, app_repo],
-            cwd=os.path.join(os.getcwd(), args.bench_name),
+            cwd=bench_cwd,
+            env=env,
         )
 
     # Create site properly
@@ -121,23 +149,22 @@ def create_site_in_bench(args):
     ]
 
     cprint(f"Creating Site {args.site_name} ...", level=2)
-    run_subprocess(
-        new_site_cmd,
-        cwd=os.path.join(os.getcwd(), args.bench_name),
-    )
+    run_subprocess(new_site_cmd, cwd=bench_cwd, env=env)
 
     # Install apps
     for app_name, _, _ in apps_to_get:
         cprint(f"Installing app {app_name} ...", level=2)
         run_subprocess(
             ["bench", "--site", args.site_name, "install-app", app_name],
-            cwd=os.path.join(os.getcwd(), args.bench_name),
+            cwd=bench_cwd,
+            env=env,
         )
 
     cprint("Set site developer_mode", level=3)
     run_subprocess(
         ["bench", "--site", args.site_name, "set-config", "developer_mode", "1"],
-        cwd=os.path.join(os.getcwd(), args.bench_name),
+        cwd=bench_cwd,
+        env=env,
     )
 
 if __name__ == "__main__":
