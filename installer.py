@@ -35,24 +35,20 @@ import sys
 import tarfile
 import tempfile
 import time
+import tomllib
 import urllib.request
 from pathlib import Path
 
 PILOT_RELEASES_URL = "https://api.github.com/repos/frappe/pilot/releases?per_page=1"
 
-# Pilot's admin UI dependencies: the 'admin' extra from its pyproject.toml,
-# minus three this container does not need and that cost a lot to resolve or
-# build on Python 3.14:
-#   psycopg2-binary  - Postgres only, imported lazily (no 3.14 wheel)
-#   litellm          - admin LLM assistant only, very large dependency tree
-#   boto3            - S3 backups only, guarded by a try/except import
-ADMIN_DEPS = [
+# Only used if a release ever ships without pyproject.toml; mirrors the same
+# fallback in Pilot's own AdminEnvManager._read_admin_deps.
+ADMIN_DEPS_FALLBACK = [
     "flask>=3.0",
     "psutil>=5.9",
     "pymysql>=1.1",
     "gunicorn>=21.2",
     "pyjwt[crypto]>=2.8",
-    "PyOTP==2.10.0",
 ]
 
 # Ports compose already publishes (8000-8005, 9000-9005). Pilot's own admin
@@ -237,16 +233,41 @@ def latest_pilot_asset_url() -> str:
     sys.exit(1)
 
 
+def admin_deps(args) -> list:
+    """The full 'admin' extra, read from Pilot's own pyproject.toml.
+
+    Read rather than hardcoded so the list cannot drift from the release that
+    is actually installed.
+    """
+    pyproject = pilot_dir(args) / "pyproject.toml"
+    if not pyproject.exists():
+        return list(ADMIN_DEPS_FALLBACK)
+    with open(pyproject, "rb") as handle:
+        data = tomllib.load(handle)
+    extras = data.get("project", {}).get("optional-dependencies", {})
+    return extras.get("admin") or list(ADMIN_DEPS_FALLBACK)
+
+
 def ensure_admin_venv(args):
-    """Pilot's admin UI runs from its own venv, separate from the bench env."""
+    """Pilot's admin UI runs from its own venv, separate from the bench env.
+
+    Installs the complete 'admin' extra, not a subset. `pilot init` calls
+    AdminEnvManager.ensure(), which installs the full set regardless of what
+    lands here and only skips when <venv>/.admin-deps already records exactly
+    those deps -- so a trimmed list buys nothing but a second, slower install.
+    Writing that stamp is deliberately left to Pilot, so a later Pilot upgrade
+    can still add dependencies.
+    """
     venv = pilot_dir(args) / ".admin-venv"
     if (venv / "bin" / "flask").exists():
         return
+    deps = admin_deps(args)
     env = bench_subprocess_env(args)
     cprint("Creating Pilot admin environment ...", level=2)
     run_subprocess(["uv", "venv", str(venv), "--quiet"], env=env)
+    cprint(f"Installing {len(deps)} admin dependencies (several minutes) ...", level=2)
     run_subprocess(
-        ["uv", "pip", "install", "--python", str(venv / "bin" / "python"), *ADMIN_DEPS],
+        ["uv", "pip", "install", "--python", str(venv / "bin" / "python"), *deps],
         env=env,
     )
 
