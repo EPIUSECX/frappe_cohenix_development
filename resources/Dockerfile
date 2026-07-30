@@ -49,6 +49,9 @@ RUN apt-get update \
     libwebp-dev \
     pkg-config \
     redis-tools \
+    # Pilot runs its own Redis per bench; it has no external-Redis setting,
+    # so the compose redis-* services cannot serve a Pilot-managed bench.
+    redis-server \
     rlwrap \
     tk8.6-dev \
     ssh-client \

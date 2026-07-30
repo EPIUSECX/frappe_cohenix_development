@@ -208,3 +208,8 @@ README.md
 
 # Cohenix
 development-bench
+
+# Pilot install + its benches (installer.py --pilot-dir), and the convenience
+# symlink it drops at <repo>/<bench-name> for a non-default bench name.
+/pilot/
+/pilot-bench
