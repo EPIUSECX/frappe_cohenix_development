@@ -21,6 +21,8 @@ Chohenix devcontainer allow quick and easy setup of the development environment 
 ## Index / Quick links
 * [Prerequisites](#prerequisites)
 * [How to Setup](#how-to-setup)
+* [After the Install](#after-the-install)
+* [Running Bench Commands](#running-bench-commands)
 * [Git Commands](#git-commands)
 
 ## Prerequisites
@@ -99,6 +101,93 @@ Chohenix devcontainer allow quick and easy setup of the development environment 
     ![COHENIX_DEVCONTAINERS](images/devcontainer_07.png)
 
     ![COHENIX_DEVCONTAINERS](images/devcontainer_08.png)
+
+## After the Install
+
+The bench is managed by [Pilot](https://github.com/frappe/pilot), which replaces
+frappe/bench 5.x as the bench manager. Pilot's own executable is also called
+`bench`, so `installer.py` installs it under the name **`pilot`** instead — the
+classic `bench` command is untouched and still works (see
+[Running Bench Commands](#running-bench-commands)).
+
+Benches live at `pilot/benches/<name>`. The installer drops a symlink at
+`development-bench` so the familiar path keeps working.
+
+### 1. Add a hosts entry (once per machine)
+
+Pilot links to sites by site name — `http://development.cohenix:8000/desk`. Your
+browser cannot resolve `.cohenix`, so add it on your **host machine** (not inside
+the container):
+
+    echo "127.0.0.1 development.cohenix" | sudo tee -a /etc/hosts
+
+Without this you get `DNS_PROBE_FINISHED_NXDOMAIN`. `http://localhost:8000` works
+either way. Remember the `:8000` — a bare hostname goes to port 80 and gives
+`ERR_CONNECTION_REFUSED`.
+
+The installer prints this line at the end of its run when the site name is not a
+`.localhost` name.
+
+### 2. Start the bench
+
+The devcontainer `postStartCommand` starts it automatically each time the
+container starts. To start or restart it by hand:
+
+    pilot -b development-bench start
+
+This is the foreground runner — the direct equivalent of the old `bench start`.
+It starts web, workers, socket.io, Pilot's own Redis, and the admin UI. Stop with
+Ctrl-C, or:
+
+    pilot -b development-bench stop
+
+| What | Where |
+|---|---|
+| Site | http://development.cohenix:8000 |
+| Pilot admin UI | http://localhost:8002 |
+| Mailpit | http://localhost:8025 |
+
+The admin UI password is in `pilot/benches/development-bench/bench.toml` under
+`[admin]`. The site Administrator password is whatever `--admin-password` was set
+to (default `admin`).
+
+### Useful Pilot commands
+
+| Command | Purpose |
+|---|---|
+| `pilot ls` | List benches, status and admin URL |
+| `pilot -b development-bench start` | Start all processes |
+| `pilot -b development-bench stop` | Stop all processes |
+| `pilot -b development-bench get-app <repo>` | Clone and install an app |
+| `pilot -b development-bench install-app <app> --site <site>` | Install an app on a site |
+| `pilot -b development-bench new-site <site>` | Create a site |
+| `pilot -b development-bench frappe --site <site> <cmd>` | Run any frappe CLI command |
+
+## Running Bench Commands
+
+Classic `bench` commands still work. Change into the bench directory first:
+
+    cd development-bench
+    bench --site development.cohenix migrate
+    bench --site development.cohenix console
+    bench build
+
+`migrate`, `build`, `console`, `execute`, `install-app`, `backup` and
+`set-config` all behave normally.
+
+**Do not run `bench start` here.** Pilot writes no `Procfile` and runs its own
+process set — use `pilot -b development-bench start` instead.
+
+If a bench command reports `WARN: Command not being executed in bench directory`,
+the `config/pids` directory is missing. frappe/bench requires it; Pilot keeps its
+pid files elsewhere. The installer creates it, and it is safe to recreate:
+
+    mkdir -p development-bench/config/pids
+
+Pilot's passthrough runs the same frappe commands from any directory, without the
+`cd`:
+
+    pilot -b development-bench frappe --site development.cohenix migrate
 
 ### Switch Between Containers
 - To switch between containers navigate to the bottom left corner and select the container icon

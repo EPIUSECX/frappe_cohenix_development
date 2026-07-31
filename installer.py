@@ -119,6 +119,7 @@ def main():
     ensure_pilot(args)
     ensure_redis_server()
     init_bench_if_not_exist(args)
+    ensure_classic_bench_compat(args)
     create_site_in_bench(args)
 
 
@@ -331,6 +332,29 @@ def init_bench_if_not_exist(args):
 
     set_common_site_config(args, {"developer_mode": 1})
     link_bench_into_workspace(args)
+
+
+def ensure_classic_bench_compat(args):
+    """Let frappe/bench 5.x commands run inside a Pilot bench.
+
+    This image still ships frappe/bench, and it is still the natural way to run
+    site-level commands (migrate, build, console, execute). Its
+    is_bench_directory() requires all of ('apps', 'sites', 'config', 'logs',
+    'config/pids'). Pilot creates every one of those except the last -- it keeps
+    pid files in a top-level pids/ -- so without this, every classic bench
+    command in the bench directory aborts with "Command not being executed in
+    bench directory". Pilot neither reads nor writes config/pids.
+
+    Note this only enables site-level commands. `bench start` still does not
+    work: Pilot writes no Procfile and runs its own process set.
+    """
+    pids = bench_root(args) / "config" / "pids"
+    if pids.is_dir():
+        return
+    if not (bench_root(args) / "bench.toml").exists():
+        return
+    pids.mkdir(parents=True, exist_ok=True)
+    cprint(f"Created {pids} so frappe/bench commands work in the bench directory", level=3)
 
 
 def apps_for_bench(args) -> list:
@@ -560,9 +584,29 @@ def create_site_in_bench(args):
             "1",
         )
 
-    cprint(f"Bench ready. Start it with: pilot -b {args.bench_name} start", level=2)
+    report_next_steps(args)
+
+
+def report_next_steps(args):
+    """What the operator still has to do by hand once provisioning is done."""
+    cprint("\nBench ready.", level=2)
+    cprint(f"  start:    pilot -b {args.bench_name} start", level=2)
+    cprint("            (the devcontainer postStartCommand does this for you)", level=3)
     cprint(f"  site:     http://localhost:{args.http_port}", level=2)
     cprint(f"  admin UI: http://localhost:{args.admin_port}", level=2)
+    cprint(f"  bench cmds: cd {os.getcwd()}/{args.bench_name}", level=2)
+
+    # Pilot builds its site links from the site name, so the browser has to be
+    # able to resolve it. *.localhost maps to loopback automatically; anything
+    # else needs a hosts entry -- on the *host* machine, not in this container,
+    # which is why this is printed rather than done.
+    if not args.site_name.endswith(".localhost"):
+        cprint(
+            f"\nPilot links sites as http://{args.site_name}:{args.http_port}/desk."
+            f"\nFor that to resolve, run this on your host machine (not in the container):"
+            f'\n  echo "127.0.0.1 {args.site_name}" | sudo tee -a /etc/hosts',
+            level=3,
+        )
 
 
 def repair_db_login_scope(args):
