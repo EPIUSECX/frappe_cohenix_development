@@ -213,7 +213,16 @@ def ensure_pilot(args):
                 archive.extractall(root, filter="data")
         finally:
             tmp.unlink(missing_ok=True)
-        (root / "bench").chmod(0o755)
+        pilot_executable = root / "bin" / "pilot"
+        bench_link = root / "bench"
+        if not bench_link.exists():
+            if pilot_executable.exists():
+                bench_link.symlink_to(pilot_executable)
+            else:
+                raise FileNotFoundError(
+                    f"Pilot installation missing executable: {pilot_executable}"
+                )
+        bench_link.chmod(0o755)
         version = (root / "VERSION").read_text().strip() if (root / "VERSION").exists() else "unknown"
         cprint(f"Pilot {version} installed", level=2)
     else:
