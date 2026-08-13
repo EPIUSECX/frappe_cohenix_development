@@ -18,6 +18,11 @@ Differences from the frappe/bench flow this replaces:
 * MariaDB stays external: ``existing = true`` points Pilot at the mariadb
   service. Those credentials live in ``benches/common_config.toml``, shared by
   every bench, not in ``bench.toml``.
+* Ports belong to the *bench*, not the site. Every site on a bench answers on
+  the same ``http_port`` and is picked out by Host header, so extra sites need
+  resolvable names rather than free ports -- hence the ``.localhost`` default
+  and ``--extra-sites``. Only a new bench gets new ports, and Pilot offsets all
+  of them at once (see ``bench_ports``).
 
 Upstream declares Python >=3.14 for frappe and erpnext on version-16; the dev
 image sets pyenv global to 3.14.x. Use --py-version only to override (e.g. pin
@@ -41,6 +46,27 @@ from pathlib import Path
 
 PILOT_RELEASES_URL = "https://api.github.com/repos/frappe/pilot/releases?per_page=1"
 
+# Third-party imports the *CLI* needs, which nothing else installs for it.
+#
+# Pilot's bin/pilot claims "All dependencies are stdlib only" and its
+# pyproject declares `dependencies = []`, but the CLI import graph reaches
+# `packaging` (pilot/integrations/marketplace.py and pilot/core/app/validator/*)
+# and `pymysql` (pilot/core/database/engines/mariadb.py). Nothing installs
+# them: install.sh only populates .admin-venv, and that is a different
+# interpreter, so the admin UI works while the CLI does not.
+#
+# `packaging` is the fatal one. bin/pilot runs under `#!/usr/bin/env python3`,
+# i.e. bare pyenv, where it is absent -- pip vendors its own copy under
+# pip._vendor and never exposes the top-level name. So `pilot new-site --apps
+# frappe erpnext hrms` creates the site, installs frappe (the framework app,
+# which new-site handles itself), then dies with "ModuleNotFoundError: No
+# module named 'packaging'" the instant SiteProvisioner.install_apps() touches
+# the second app. Result: an "Active" site with frappe and nothing else.
+#
+# `pymysql` is not fatal -- Pilot's site DB probes catch every exception and
+# report "no rows" -- but without it those probes silently answer wrong.
+PILOT_CLI_DEPS = ["packaging", "pymysql"]
+
 # Only used if a release ever ships without pyproject.toml; mirrors the same
 # fallback in Pilot's own AdminEnvManager._read_admin_deps.
 ADMIN_DEPS_FALLBACK = [
@@ -56,6 +82,11 @@ ADMIN_DEPS_FALLBACK = [
 DEFAULT_HTTP_PORT = 8000
 DEFAULT_SOCKETIO_PORT = 9000
 DEFAULT_ADMIN_PORT = 8002
+
+# Everything docker-compose.yml forwards to the host. A port outside these is
+# reachable inside the container and nowhere else, which looks exactly like a
+# broken bench from the browser.
+PUBLISHED_PORTS = frozenset(range(8000, 8006)) | frozenset(range(9000, 9006))
 
 SAFE_SQL_IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
 
@@ -127,7 +158,24 @@ def get_args_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-j", "--apps-json", type=str, default=None)
     parser.add_argument("-b", "--bench-name", type=str, default="development-bench")
-    parser.add_argument("-s", "--site-name", type=str, default="development.cohenix")
+    # A `.localhost` name resolves to loopback on macOS, Linux and Windows with
+    # no /etc/hosts entry, which matters because Pilot cannot give you one:
+    # SiteProvisioner.add_to_hosts writes to the *container's* /etc/hosts, where
+    # no browser will ever read it. Sites on one bench share the HTTP port and
+    # are told apart by Host header (frappe.utils.get_site_name splits the port
+    # off and uses the rest as the directory name), so the name is the only
+    # thing making a second site reachable.
+    parser.add_argument("-s", "--site-name", type=str, default="cohenix.localhost")
+    parser.add_argument(
+        "--extra-sites",
+        type=str,
+        nargs="*",
+        default=[],
+        metavar="NAME",
+        help="Further sites to create on the same bench with the same apps. They "
+        "share the bench's HTTP port and are routed by Host header, so give them "
+        "'.localhost' names unless you enjoy editing /etc/hosts.",
+    )
     parser.add_argument("-r", "--frappe-repo", type=str, default="https://github.com/frappe/frappe")
     parser.add_argument("-t", "--frappe-branch", type=str, default="version-16")
     parser.add_argument(
@@ -228,8 +276,45 @@ def ensure_pilot(args):
     else:
         cprint("Pilot already installed", level=3)
 
+    ensure_pilot_cli_deps()
     ensure_admin_venv(args)
     ensure_pilot_on_path(args)
+
+
+def pilot_cli_python() -> str:
+    """The interpreter Pilot's CLI actually runs under.
+
+    bin/pilot has a `#!/usr/bin/env python3` shebang and inserts its install
+    directory on sys.path, so the CLI runs on whatever `python3` resolves to --
+    the pyenv global, not the bench env and not .admin-venv.
+    """
+    return shutil.which("python3") or sys.executable
+
+
+def ensure_pilot_cli_deps():
+    """Install PILOT_CLI_DEPS into the interpreter that runs `pilot`.
+
+    Runs on every invocation, not just a fresh install: a Pilot upgrade can add
+    an undeclared import, and this is cheap once the modules are there.
+    """
+    python = pilot_cli_python()
+    probe = subprocess.run(
+        [python, "-c", "import importlib.util as u,sys;"
+         "print(' '.join(m for m in sys.argv[1:] if u.find_spec(m) is None))", *PILOT_CLI_DEPS],
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0:
+        cprint(f"Could not probe {python} for Pilot's CLI dependencies:\n{probe.stderr}", level=1)
+        sys.exit(1)
+    missing = probe.stdout.split()
+    if not missing:
+        return
+    cprint(f"Installing Pilot CLI dependencies into {python}: {', '.join(missing)}", level=2)
+    run_subprocess(
+        [python, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", *missing],
+        env=bench_subprocess_env(),
+    )
 
 
 def latest_pilot_asset_url() -> str:
@@ -399,6 +484,78 @@ def import_pilot_config(args):
     return AppConfig, BenchConfig
 
 
+def sibling_bench_ports(args) -> dict:
+    """{port: bench name} for every other bench that already claims one."""
+    _, BenchConfig = import_pilot_config(args)
+
+    claimed = {}
+    for toml_path in sorted(benches_dir(args).glob("*/bench.toml")):
+        name = toml_path.parent.name
+        if name == args.bench_name:
+            continue
+        try:
+            config = BenchConfig.read(toml_path.parent)
+        except Exception:  # noqa: BLE001 - a sibling we cannot parse just goes unchecked
+            continue
+        for port in (config.http_port, config.socketio_port, config.admin.port):
+            claimed[port] = name
+    return claimed
+
+
+def bench_ports(args) -> dict:
+    """The http/socketio/admin ports this bench should use.
+
+    `pilot new` picks a port offset off the benches it can see
+    (BenchCreator._pick_port_offset) and shifts every port by it. We then have
+    to overwrite http/socketio/admin, because Pilot's defaults (8000/9000/7000)
+    include one compose does not publish -- and overwriting them with constants
+    threw that offset away, so a second bench landed straight back on 8000 and
+    collided with the first. Re-apply the offset instead, and refuse to write a
+    config that cannot work rather than discovering it at `pilot start`.
+
+    Explicitly passed ports are taken verbatim: if you name a port, you mean it.
+    """
+    _, BenchConfig = import_pilot_config(args)
+
+    offset = BenchConfig.current_port_offset(bench_root(args) / "bench.toml")
+    defaults = {
+        "http": DEFAULT_HTTP_PORT,
+        "socketio": DEFAULT_SOCKETIO_PORT,
+        "admin": DEFAULT_ADMIN_PORT,
+    }
+    chosen = {"http": args.http_port, "socketio": args.socketio_port, "admin": args.admin_port}
+    ports = {
+        role: value if value != defaults[role] else value + offset
+        for role, value in chosen.items()
+    }
+    if offset:
+        cprint(f"Pilot picked port offset {offset} for this bench", level=3)
+
+    claimed = sibling_bench_ports(args)
+    problems = []
+    for role, port in sorted(ports.items(), key=lambda item: item[1]):
+        if port not in PUBLISHED_PORTS:
+            problems.append(
+                f"  {role} port {port} is not published by docker-compose.yml "
+                f"(it forwards 8000-8005 and 9000-9005), so nothing on your host can reach it"
+            )
+        elif port in claimed:
+            problems.append(f"  {role} port {port} is already used by bench '{claimed[port]}'")
+    if len(set(ports.values())) != len(ports):
+        problems.append(f"  two roles were given the same port: {ports}")
+
+    if problems:
+        cprint(
+            "Cannot allocate ports for this bench:\n"
+            + "\n".join(problems)
+            + "\nWiden the ports: range in .devcontainer/docker-compose.yml, or pass "
+            "--http-port/--socketio-port/--admin-port explicitly.",
+            level=1,
+        )
+        sys.exit(1)
+    return ports
+
+
 def configure_bench(args):
     """Rewrite bench.toml (and the shared common_config.toml) for this container.
 
@@ -408,6 +565,7 @@ def configure_bench(args):
     AppConfig, BenchConfig = import_pilot_config(args)
 
     root = bench_root(args)
+    ports = bench_ports(args)
     db_host = args.db_host or ("mariadb" if args.db_type == "mariadb" else "postgresql")
 
     cprint("Writing bench.toml ...", level=2)
@@ -417,10 +575,12 @@ def configure_bench(args):
             AppConfig(name=name, repo=repo, branch=branch) for name, repo, branch in apps_for_bench(args)
         ]
 
-        # Ports compose publishes; Pilot's defaults (admin 7000) are not forwarded.
-        config.http_port = args.http_port
-        config.socketio_port = args.socketio_port
-        config.admin.port = args.admin_port
+        # Ports compose publishes; Pilot's defaults (admin 7000) are not
+        # forwarded. Redis is left alone: it is container-local, so Pilot's own
+        # offset is already right for it.
+        config.http_port = ports["http"]
+        config.socketio_port = ports["socketio"]
+        config.admin.port = ports["admin"]
         config.admin.password = args.admin_ui_password or args.admin_password
 
         # Developer mode itself is per-site; this only allows toggling it.
@@ -549,76 +709,156 @@ def wait_for_port(process, port: int, label: str, timeout: float = 20.0):
     sys.exit(1)
 
 
-def create_site_in_bench(args):
-    site_path = bench_root(args) / "sites" / args.site_name
-    if site_path.exists():
-        cprint(f"Site {args.site_name} already exists, skipping", level=3)
-        return
+def all_site_names(args) -> list:
+    """Every site this run should end up with, the default one first."""
+    names = [args.site_name]
+    names += [name for name in args.extra_sites if name not in names]
+    return names
 
-    app_names = [name for name, _, _ in apps_for_bench(args)]
-    with redis_running(args):
-        cprint(f"Creating Site {args.site_name} ...", level=2)
+
+def site_installed_apps(args, site_name: str) -> list:
+    """Apps recorded on the site, straight from site_config.json.
+
+    Read here rather than via `pilot list-site-apps`, which needs the site's DB
+    to be reachable and answers with an empty list when it is not -- that would
+    look identical to a site with no apps and trigger a pointless reinstall.
+    """
+    path = bench_root(args) / "sites" / site_name / "site_config.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text()).get("installed_apps", [])
+
+
+def provision_site(args, site_name: str, app_names: list):
+    """Create the site, or finish one a previous run left half-built."""
+    if (bench_root(args) / "sites" / site_name).exists():
+        # A provision that dies partway leaves the site behind with only the
+        # apps it got to, and Pilot's new-site refuses to touch an existing
+        # site. Skipping outright would make every re-run a no-op and leave the
+        # half-built site half-built forever, so finish it instead: install what
+        # is missing, then carry on to the steps the failed run never reached.
+        missing = [name for name in app_names if name not in site_installed_apps(args, site_name)]
+        if not missing:
+            cprint(f"Site {site_name} already exists with all apps, skipping creation", level=3)
+        else:
+            cprint(
+                f"Site {site_name} exists but is missing {', '.join(missing)}; "
+                f"installing (a previous run must have failed partway)",
+                level=3,
+            )
+            run_pilot(args, "--bench", args.bench_name, "install-app", site_name, *missing)
+    else:
+        cprint(f"Creating Site {site_name} ...", level=2)
         run_pilot(
             args,
             "--bench",
             args.bench_name,
             "new-site",
-            args.site_name,
+            site_name,
             "--admin-password",
             args.admin_password,
             "--apps",
             *app_names,
         )
 
-        repair_db_login_scope(args)
+    repair_db_login_scope(args, site_name)
 
-        # Pilot has no equivalent of frappe/bench's `new-site --set-default`,
-        # so the site would only answer to its own Host header. Without this,
+    cprint(f"Set developer_mode on {site_name}", level=3)
+    # No `--` separator: Pilot forwards the rest verbatim to frappe's bench
+    # helper, and a literal `--` there makes click read `--site` as a
+    # subcommand name instead of an option.
+    run_pilot(
+        args,
+        "--bench",
+        args.bench_name,
+        "frappe",
+        "--site",
+        site_name,
+        "set-config",
+        "developer_mode",
+        "1",
+    )
+
+
+def ensure_assets_built(args):
+    """Make sure sites/assets/assets.json exists.
+
+    Pilot's SiteProvisioner.build_missing_assets() decides whether to build by
+    asking whether ``sites/assets/<app>`` exists -- but that directory is a
+    symlink to the app's public/ folder, created by the asset *linking* step
+    that `pilot init` and `pilot start` run regardless of whether esbuild has
+    ever produced a bundle. So on any bench where the link already exists, it
+    builds nothing, and the bench-wide manifest never gets written.
+
+    Frappe then serves a desk that cannot render: get_assets_json() reads
+    ``assets/assets.json``, gets None from the missing file, and every
+    ``{{ include_style(...) }}`` dies with "'NoneType' object has no attribute
+    'get'" -- including the one in the error page rendered to report it, which
+    is why the traceback nests four deep.
+
+    Cheap to check and cheap to skip, so it runs on every invocation.
+    """
+    manifest = bench_root(args) / "sites" / "assets" / "assets.json"
+    if manifest.exists():
+        return
+    cprint(f"{manifest.name} is missing; building assets ...", level=2)
+    run_pilot(args, "--bench", args.bench_name, "build")
+    if not manifest.exists():
+        cprint(f"Build finished but {manifest} still does not exist", level=1)
+        sys.exit(1)
+
+
+def create_site_in_bench(args):
+    app_names = [name for name, _, _ in apps_for_bench(args)]
+
+    with redis_running(args):
+        for site_name in all_site_names(args):
+            provision_site(args, site_name, app_names)
+
+        # Pilot has no equivalent of frappe/bench's `new-site --set-default`, so
+        # every site would only answer to its own Host header. Without this,
         # http://localhost:<http_port> returns "localhost does not exist".
+        # Written last: Pilot's own provisioning rewrites this file per site.
         set_common_site_config(args, {"default_site": args.site_name, "serve_default_site": True})
 
-        cprint("Set site developer_mode", level=3)
-        # No `--` separator: Pilot forwards the rest verbatim to frappe's bench
-        # helper, and a literal `--` there makes click read `--site` as a
-        # subcommand name instead of an option.
-        run_pilot(
-            args,
-            "--bench",
-            args.bench_name,
-            "frappe",
-            "--site",
-            args.site_name,
-            "set-config",
-            "developer_mode",
-            "1",
-        )
-
+    ensure_assets_built(args)
     report_next_steps(args)
 
 
 def report_next_steps(args):
     """What the operator still has to do by hand once provisioning is done."""
+    # Read back rather than trusting args: on a re-run against an existing
+    # bench, configure_bench never ran and bench.toml is the only truth.
+    _, BenchConfig = import_pilot_config(args)
+    config = BenchConfig.read(bench_root(args))
+    sites = all_site_names(args)
+
     cprint("\nBench ready.", level=2)
     cprint(f"  start:    pilot -b {args.bench_name} start", level=2)
     cprint("            (the devcontainer postStartCommand does this for you)", level=3)
-    cprint(f"  site:     http://localhost:{args.http_port}", level=2)
-    cprint(f"  admin UI: http://localhost:{args.admin_port}", level=2)
+    cprint(f"  default:  http://localhost:{config.http_port}  ({args.site_name})", level=2)
+    for site in sites:
+        cprint(f"  site:     http://{site}:{config.http_port}/app", level=2)
+    cprint(f"  admin UI: http://localhost:{config.admin.port}", level=2)
     cprint(f"  bench cmds: cd {os.getcwd()}/{args.bench_name}", level=2)
 
-    # Pilot builds its site links from the site name, so the browser has to be
-    # able to resolve it. *.localhost maps to loopback automatically; anything
-    # else needs a hosts entry -- on the *host* machine, not in this container,
-    # which is why this is printed rather than done.
-    if not args.site_name.endswith(".localhost"):
+    # Every site on a bench shares one port and is picked out by Host header, so
+    # the browser has to resolve each name. *.localhost maps to loopback on its
+    # own; anything else needs a hosts entry on the *host* machine, not in this
+    # container -- which is why this is printed rather than done.
+    unresolvable = [site for site in sites if not site.endswith(".localhost")]
+    if unresolvable:
+        entries = "\n".join(f'  echo "127.0.0.1 {site}" | sudo tee -a /etc/hosts' for site in unresolvable)
         cprint(
-            f"\nPilot links sites as http://{args.site_name}:{args.http_port}/desk."
-            f"\nFor that to resolve, run this on your host machine (not in the container):"
-            f'\n  echo "127.0.0.1 {args.site_name}" | sudo tee -a /etc/hosts',
+            f"\nPilot links sites as http://<site>:{config.http_port}/desk, and only the"
+            f"\ndefault site answers on plain localhost. For {', '.join(unresolvable)} to"
+            f"\nresolve, run this on your host machine (not in the container):\n{entries}"
+            f"\n\nNaming sites '<something>.localhost' avoids this entirely.",
             level=3,
         )
 
 
-def repair_db_login_scope(args):
+def repair_db_login_scope(args, site_name: str):
     """Grant the site's DB user access from any host.
 
     frappe's new-site scopes the user to the host the root connection came from
@@ -630,7 +870,7 @@ def repair_db_login_scope(args):
     if not args.db_login_scope or args.db_type != "mariadb":
         return
 
-    site_config_path = bench_root(args) / "sites" / args.site_name / "site_config.json"
+    site_config_path = bench_root(args) / "sites" / site_name / "site_config.json"
     site_config = json.loads(site_config_path.read_text())
     db_name = site_config["db_name"]
     db_user = site_config.get("db_user") or db_name
