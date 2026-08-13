@@ -88,6 +88,12 @@ DEFAULT_ADMIN_PORT = 8002
 # broken bench from the browser.
 PUBLISHED_PORTS = frozenset(range(8000, 8006)) | frozenset(range(9000, 9006))
 
+# How far back to deepen Pilot's --depth 1 app clones, and the commit count
+# below which a clone is still one of them. Anything deepened lands in the
+# thousands, so the gap between the two is wide enough not to need tuning.
+APP_HISTORY_DEPTH = 200
+SHALLOW_CLONE_MAX_COMMITS = 50
+
 SAFE_SQL_IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
 
 
@@ -151,6 +157,7 @@ def main():
     ensure_redis_server()
     init_bench_if_not_exist(args)
     ensure_classic_bench_compat(args)
+    ensure_app_history(args)
     create_site_in_bench(args)
 
 
@@ -449,6 +456,64 @@ def ensure_classic_bench_compat(args):
         return
     pids.mkdir(parents=True, exist_ok=True)
     cprint(f"Created {pids} so frappe/bench commands work in the bench directory", level=3)
+
+
+def app_commit_count(path: Path) -> int:
+    """Commits reachable from HEAD, or 0 when git cannot say."""
+    result = subprocess.run(
+        ["git", "-C", str(path), "rev-list", "--count", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return 0
+    return int(result.stdout.strip() or 0)
+
+
+def ensure_app_history(args):
+    """Deepen the app clones Pilot made at --depth 1.
+
+    Pilot clones apps shallow unless it is running as a dev build
+    (AppRepository.depth_flags -> is_dev_build -> VERSION == "dev"), and we
+    install from the release tarball, so every app arrives with exactly one
+    commit. Two consequences:
+
+    * Pilot's own update check breaks, and breaks *dangerously*. It decides by
+      git ancestry rather than version labels -- `not repo.is_ancestor(target,
+      HEAD)` in AppRepository._is_ahead_of_installed -- which is the right idea,
+      but with no history git cannot answer and the check fails open. Tracking a
+      branch tip that runs ahead of the marketplace registry's validated pin
+      (e.g. erpnext version-16 at 16.32.0 vs a registry pinned to 16.30.0) then
+      shows up in the admin UI as an available update, and its one-click "Update
+      all" would check out the older commit and migrate the site *backwards*.
+    * `git log`, `blame` and branching are all useless on a bench whose entire
+      point is development.
+
+    A bounded deepen fixes both without paying for the full history of every
+    app. Failures are warnings, not errors: this improves a working bench, it is
+    not required for one.
+    """
+    for name, _, branch in apps_for_bench(args):
+        path = bench_root(args) / "apps" / name
+        if not (path / ".git").exists():
+            continue
+        if app_commit_count(path) >= SHALLOW_CLONE_MAX_COMMITS:
+            continue
+        cprint(f"Deepening {name} history to ~{APP_HISTORY_DEPTH} commits ...", level=3)
+        result = subprocess.run(
+            ["git", "-C", str(path), "fetch", f"--depth={APP_HISTORY_DEPTH}", "origin", branch],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            cprint(
+                f"Could not deepen {name} ({result.stderr.strip()}).\n"
+                f"  Pilot may offer a downgrade as an 'update' for this app -- check the "
+                f"version numbers before accepting one.",
+                level=3,
+            )
 
 
 def apps_for_bench(args) -> list:
