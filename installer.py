@@ -2,8 +2,8 @@
 """Provision a bench aligned with Frappe v16 (version-16 branches) using Pilot.
 
 Pilot (https://github.com/frappe/pilot) replaces frappe/bench v5 as the bench
-manager. Its CLI executable is also called `bench`, so this script installs it
-under a distinct name (`pilot`) and never puts it on PATH ahead of frappe/bench.
+manager. Its CLI executable lives at `bin/pilot` in the release tarball; this
+script symlinks it onto PATH as `pilot` and never shadows frappe/bench.
 
 Differences from the frappe/bench flow this replaces:
 
@@ -247,6 +247,10 @@ def bench_root(args) -> Path:
     return benches_dir(args) / args.bench_name
 
 
+def pilot_bin(args) -> Path:
+    return pilot_dir(args) / "bin" / "pilot"
+
+
 def ensure_pilot(args):
     """Install Pilot from its latest release tarball if it is not there yet.
 
@@ -255,7 +259,7 @@ def ensure_pilot(args):
     PATH, which would shadow frappe/bench 5.x in this image.
     """
     root = pilot_dir(args)
-    if not (root / "bench").exists():
+    if not pilot_bin(args).exists():
         cprint(f"Installing Pilot into {root} ...", level=2)
         url = latest_pilot_asset_url()
         root.mkdir(parents=True, exist_ok=True)
@@ -286,6 +290,7 @@ def ensure_pilot(args):
     ensure_pilot_cli_deps()
     ensure_admin_venv(args)
     ensure_pilot_on_path(args)
+    ensure_bench_start_shim(args)
 
 
 def pilot_cli_python() -> str:
@@ -366,7 +371,9 @@ def ensure_admin_venv(args):
     deps = admin_deps(args)
     env = bench_subprocess_env(args)
     cprint("Creating Pilot admin environment ...", level=2)
-    run_subprocess(["uv", "venv", str(venv), "--quiet"], env=env)
+    # --clear so a half-built venv from an interrupted run is replaced rather
+    # than making `uv venv` bail out ("a directory already exists").
+    run_subprocess(["uv", "venv", str(venv), "--clear", "--quiet"], env=env)
     cprint(f"Installing {len(deps)} admin dependencies (several minutes) ...", level=2)
     run_subprocess(
         ["uv", "pip", "install", "--python", str(venv / "bin" / "python"), *deps],
@@ -375,20 +382,59 @@ def ensure_admin_venv(args):
 
 
 def ensure_pilot_on_path(args):
-    """Expose Pilot as `pilot`. Its own binary is named `bench`; symlinking it
-    under that name would shadow frappe/bench 5.x, which this image still ships.
-    """
+    """Expose Pilot's bin/pilot as `pilot` on PATH."""
     link = Path.home() / ".local" / "bin" / "pilot"
     link.parent.mkdir(parents=True, exist_ok=True)
-    target = pilot_dir(args) / "bench"
+    target = pilot_bin(args)
     if link.is_symlink() or link.exists():
         link.unlink()
     link.symlink_to(target)
     cprint(f"Pilot available as `pilot` ({link} -> {target})", level=3)
 
 
+BENCH_SHIM_MARKER = "# pilot-bench-shim v1"
+
+
+def ensure_bench_start_shim(args):
+    """Let `bench start` work inside a Pilot bench by delegating to Pilot.
+
+    `bench start` cannot work in a Pilot bench (see ensure_classic_bench_compat):
+    Pilot writes no Procfile and runs its own process set. This wraps the real
+    frappe/bench console-script, moving it aside to `bench.frappe`, so that
+    typing `bench start` from inside <cwd>/<bench-name> (the symlink
+    link_bench_into_workspace creates) resolves the bench name from the
+    directory and runs `pilot -b <bench-name> start`. Every other subcommand
+    still execs frappe/bench untouched.
+    """
+    bin_dir = Path.home() / ".local" / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    wrapper = bin_dir / "bench"
+    real = bin_dir / "bench.frappe"
+
+    already_shimmed = wrapper.is_file() and BENCH_SHIM_MARKER in wrapper.read_text(errors="ignore")
+    if wrapper.exists() and not already_shimmed and not real.exists():
+        wrapper.rename(real)
+
+    if not real.exists():
+        cprint(f"No frappe/bench console-script found to wrap at {wrapper}, skipping bench-start shim", level=3)
+        return
+
+    wrapper.write_text(
+        "#!/usr/bin/env bash\n"
+        f"{BENCH_SHIM_MARKER}\n"
+        'if [ "${1:-}" = "start" ]; then\n'
+        "    shift\n"
+        '    exec pilot -b "$(basename "$PWD")" start "$@"\n'
+        "else\n"
+        f'    exec "{real}" "$@"\n'
+        "fi\n"
+    )
+    wrapper.chmod(0o755)
+    cprint(f"`bench start` now delegates to Pilot ({wrapper})", level=3)
+
+
 def run_pilot(args, *cli_args, cwd=None):
-    command = [str(pilot_dir(args) / "bench")]
+    command = [str(pilot_bin(args))]
     if args.verbose:
         command.append("--verbose")
     command += [str(a) for a in cli_args]
@@ -419,13 +465,51 @@ def ensure_redis_server():
 # Bench
 # --------------------------------------------------------------------------
 
+def bench_is_initialised(args) -> bool:
+    """Whether `pilot init` actually finished, not merely `pilot new`.
+
+    `pilot new` writes bench.toml immediately; the clone-and-install of `pilot
+    init` runs afterwards and can fail on a network blip, a bad branch or a
+    half-installed apt. Treating bench.toml alone as "done" wedges the bench
+    permanently: every later run reports "Bench already exists", skips init and
+    then dies on the config/ files init would have generated. apps/frappe is
+    the first artefact init produces that survives a failure, so require it too.
+    """
+    root = bench_root(args)
+    return (root / "bench.toml").exists() and (root / "apps" / "frappe").is_dir()
+
+
+def clear_incomplete_venv(venv: Path):
+    """Drop a venv directory that exists but has no interpreter in it.
+
+    An interrupted run (a killed postCreateCommand, a container stopped
+    mid-install) leaves behind lib/pythonX.Y/site-packages and nothing else.
+    `uv venv` then refuses to write into the existing directory, and Pilot's
+    own PythonEnvManager.create_venv skips its "already there?" guard because
+    bin/python is missing -- so every later run fails the same way until the
+    directory is removed.
+    """
+    if not venv.is_dir() or (venv / "bin" / "python").exists():
+        return
+    cprint(f"Removing incomplete virtualenv {venv} ...", level=3)
+    shutil.rmtree(venv)
+
+
 def init_bench_if_not_exist(args):
-    if (bench_root(args) / "bench.toml").exists():
+    clear_incomplete_venv(bench_root(args) / "env")
+    if bench_is_initialised(args):
         cprint("Bench already exists. Only site will be created", level=3)
+        ensure_bench_config_files(args)
+        link_bench_into_workspace(args)
         return
 
-    cprint(f"Creating bench {args.bench_name} ...", level=2)
-    run_pilot(args, "new", args.bench_name, "--database", args.db_type)
+    if (bench_root(args) / "bench.toml").exists():
+        # `pilot new` refuses to overwrite, so resume from configure + init
+        # rather than starting over; both are safe to repeat.
+        cprint(f"Bench {args.bench_name} is half-built, resuming ...", level=3)
+    else:
+        cprint(f"Creating bench {args.bench_name} ...", level=2)
+        run_pilot(args, "new", args.bench_name, "--database", args.db_type)
     configure_bench(args)
 
     cprint("Initialising bench (clone + install apps, this takes a while) ...", level=2)
@@ -433,6 +517,20 @@ def init_bench_if_not_exist(args):
 
     set_common_site_config(args, {"developer_mode": 1})
     link_bench_into_workspace(args)
+
+
+def ensure_bench_config_files(args):
+    """Regenerate config/ when it is missing on an otherwise-built bench.
+
+    `pilot init` writes config/redis_*.conf, but a bench whose config/ was
+    cleaned (or that predates it) has none, and site creation needs the Redis
+    servers those files describe. Cheap and idempotent, so just re-run it.
+    """
+    root = bench_root(args)
+    if all((root / "config" / name).exists() for name in ("redis_cache.conf", "redis_queue.conf")):
+        return
+    cprint("Bench config/ is incomplete, regenerating ...", level=2)
+    run_pilot(args, "--bench", args.bench_name, "setup", "config")
 
 
 def ensure_classic_bench_compat(args):
@@ -725,6 +823,7 @@ def redis_running(args):
     left alone.
     """
     root = bench_root(args)
+    ensure_bench_config_files(args)
     _, BenchConfig = import_pilot_config(args)
     redis = BenchConfig.read(root).redis
 

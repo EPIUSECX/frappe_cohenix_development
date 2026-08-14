@@ -8,9 +8,10 @@
         "ms-python.python",
         "ms-vscode.live-server",
         "mtxr.sqltools",
-        "visualstudioexptteam.vscodeintellicode",
         "cweijan.vscode-database-client2",
-        "ms-azuretools.vscode-docker"
+        "ms-azuretools.vscode-docker",
+        "anthropic.claude-code",
+        "mhutchie.git-graph"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "bash",
