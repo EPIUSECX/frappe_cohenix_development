@@ -30,6 +30,7 @@ image sets pyenv global to 3.14.x. Use --py-version only to override (e.g. pin
 """
 import argparse
 import contextlib
+import datetime as dt
 import json
 import os
 import re
@@ -40,11 +41,17 @@ import sys
 import tarfile
 import tempfile
 import time
-import tomllib
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import tomllib
+
 PILOT_RELEASES_URL = "https://api.github.com/repos/frappe/pilot/releases?per_page=1"
+PILOT_RELEASE_DOWNLOAD_URL = (
+    "https://github.com/frappe/pilot/releases/download/{version}/pilot.tar.gz"
+)
+DEFAULT_PILOT_VERSION = "v0.0.23-pre-alpha"
 
 # Third-party imports the *CLI* needs, which nothing else installs for it.
 #
@@ -152,6 +159,9 @@ def bench_subprocess_env(args=None):
 def main():
     parser = get_args_parser()
     args = parser.parse_args()
+    if args.verify_only:
+        verify_installation(args)
+        return
     set_git_auto_setup_remote()
     ensure_pilot(args)
     ensure_redis_server()
@@ -159,6 +169,8 @@ def main():
     ensure_classic_bench_compat(args)
     ensure_app_history(args)
     create_site_in_bench(args)
+    verify_installation(args)
+    write_provisioning_record(args)
 
 
 def get_args_parser():
@@ -184,12 +196,17 @@ def get_args_parser():
         "'.localhost' names unless you enjoy editing /etc/hosts.",
     )
     parser.add_argument("-r", "--frappe-repo", type=str, default="https://github.com/frappe/frappe")
-    parser.add_argument("-t", "--frappe-branch", type=str, default="version-16")
+    parser.add_argument(
+        "-t",
+        "--frappe-branch",
+        type=str,
+        default=os.getenv("FRAPPE_BRANCH", "version-16"),
+    )
     parser.add_argument(
         "-p",
         "--py-version",
         type=str,
-        default="3.14",
+        default=os.getenv("PYTHON_VERSION", "3.14"),
         help="Python version written to bench.toml (Frappe v16 needs 3.14.x)",
     )
     parser.add_argument("-n", "--node-version", type=str, default=None)
@@ -197,7 +214,11 @@ def get_args_parser():
     parser.add_argument("-a", "--admin-password", type=str, default="admin")
     parser.add_argument("-d", "--db-type", type=str, default="mariadb")
     parser.add_argument("--db-root-username", type=str, default="root")
-    parser.add_argument("--db-root-password", type=str, default="123")
+    parser.add_argument(
+        "--db-root-password",
+        type=str,
+        default=os.getenv("DB_ROOT_PASSWORD", "123"),
+    )
     parser.add_argument("--db-host", type=str, default=None, help="Defaults to the compose service name")
     parser.add_argument("--db-port", type=int, default=None, help="Defaults to 3306 / 5432")
     parser.add_argument(
@@ -214,6 +235,12 @@ def get_args_parser():
         default=os.getenv("PILOT_DIR", "/workspace/pilot"),
         help="Where Pilot is installed; benches live in <pilot-dir>/benches",
     )
+    parser.add_argument(
+        "--pilot-version",
+        type=str,
+        default=os.getenv("PILOT_VERSION", DEFAULT_PILOT_VERSION),
+        help=f"Pilot release to install (default: {DEFAULT_PILOT_VERSION}); use 'latest' to opt into drift",
+    )
     parser.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT)
     parser.add_argument("--socketio-port", type=int, default=DEFAULT_SOCKETIO_PORT)
     parser.add_argument(
@@ -227,6 +254,11 @@ def get_args_parser():
         type=str,
         default=None,
         help="Pilot admin UI password (defaults to --admin-password)",
+    )
+    parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="Check the runtime, bench, apps, assets and sites without changing them",
     )
     return parser
 
@@ -252,7 +284,7 @@ def pilot_bin(args) -> Path:
 
 
 def ensure_pilot(args):
-    """Install Pilot from its latest release tarball if it is not there yet.
+    """Install the requested Pilot release tarball if it is not there yet.
 
     Deliberately not install.sh: that script installs MariaDB, PostgreSQL,
     nginx, supervisor and certbot system-wide and prepends its own `bench` to
@@ -260,8 +292,12 @@ def ensure_pilot(args):
     """
     root = pilot_dir(args)
     if not pilot_bin(args).exists():
-        cprint(f"Installing Pilot into {root} ...", level=2)
-        url = latest_pilot_asset_url()
+        try:
+            version, url = pilot_release_asset(args.pilot_version)
+        except ValueError as exc:
+            cprint(str(exc), level=1)
+            sys.exit(2)
+        cprint(f"Installing Pilot {version} into {root} ...", level=2)
         root.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as handle:
             tmp = Path(handle.name)
@@ -285,7 +321,16 @@ def ensure_pilot(args):
         version = (root / "VERSION").read_text().strip() if (root / "VERSION").exists() else "unknown"
         cprint(f"Pilot {version} installed", level=2)
     else:
-        cprint("Pilot already installed", level=3)
+        installed = installed_pilot_version(args)
+        if args.pilot_version != "latest" and installed != args.pilot_version:
+            cprint(
+                f"Pilot version mismatch: requested {args.pilot_version}, found {installed}. "
+                f"Remove {root} to perform an intentional clean upgrade, or pass "
+                f"--pilot-version {installed}.",
+                level=1,
+            )
+            sys.exit(1)
+        cprint(f"Pilot {installed} already installed", level=3)
 
     ensure_pilot_cli_deps()
     ensure_admin_venv(args)
@@ -329,15 +374,34 @@ def ensure_pilot_cli_deps():
     )
 
 
-def latest_pilot_asset_url() -> str:
+def installed_pilot_version(args) -> str:
+    version_file = pilot_dir(args) / "VERSION"
+    return version_file.read_text().strip() if version_file.exists() else "unknown"
+
+
+def latest_pilot_release() -> tuple[str, str]:
     with urllib.request.urlopen(PILOT_RELEASES_URL, timeout=60) as response:  # noqa: S310
         releases = json.load(response)
     for release in releases:
         for asset in release.get("assets", []):
             if asset.get("name") == "pilot.tar.gz":
-                return asset["browser_download_url"]
+                return release["tag_name"], asset["browser_download_url"]
     cprint("No pilot.tar.gz release asset found", level=1)
     sys.exit(1)
+
+
+def pilot_release_asset(version: str) -> tuple[str, str]:
+    """Resolve a Pilot release to a stable asset URL.
+
+    A fixed tag is the default, matching Chef's fail-closed release tracking.
+    ``latest`` remains available as an explicit convenience for experimentation.
+    """
+    if version == "latest":
+        return latest_pilot_release()
+    if not re.fullmatch(r"v?[0-9A-Za-z][0-9A-Za-z._+-]*", version):
+        raise ValueError(f"Invalid Pilot release tag: {version!r}")
+    encoded = urllib.parse.quote(version, safe="")
+    return version, PILOT_RELEASE_DOWNLOAD_URL.format(version=encoded)
 
 
 def admin_deps(args) -> list:
@@ -642,7 +706,10 @@ def import_pilot_config(args):
     putting the install directory on sys.path, so do the same."""
     if str(pilot_dir(args)) not in sys.path:
         sys.path.insert(0, str(pilot_dir(args)))
-    from pilot.config import AppConfig, BenchConfig  # noqa: PLC0415 - needs the sys.path above
+    from pilot.config import (  # noqa: PLC0415 - needs the sys.path above
+        AppConfig,
+        BenchConfig,
+    )
 
     return AppConfig, BenchConfig
 
@@ -1069,6 +1136,108 @@ def repair_db_login_scope(args, site_name: str):
         # Keeps the root password off the process list.
         env={**os.environ, "MYSQL_PWD": args.db_root_password},
     )
+
+
+# --------------------------------------------------------------------------
+# Verification and provenance
+# --------------------------------------------------------------------------
+
+def command_output(*command: str) -> str:
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    return result.stdout.strip() if result.returncode == 0 else "unknown"
+
+
+def app_commit(app_dir: Path) -> str:
+    if not (app_dir / ".git").exists():
+        return "unknown"
+    return command_output("git", "-C", str(app_dir), "rev-parse", "HEAD")
+
+
+def verify_installation(args):
+    """Fail loudly when the resulting development environment is incomplete."""
+    errors = []
+    for command in ("git", "mariadb", "node", "redis-server", "uv", "yarn"):
+        if shutil.which(command) is None:
+            errors.append(f"required command is missing: {command}")
+
+    expected_python = args.py_version
+    actual_python = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    if actual_python != expected_python and not actual_python.startswith(f"{expected_python}."):
+        errors.append(f"Python {expected_python} requested, but installer runs on {actual_python}")
+
+    installed = installed_pilot_version(args)
+    if not pilot_bin(args).is_file():
+        errors.append(f"Pilot executable is missing: {pilot_bin(args)}")
+    if args.pilot_version != "latest" and installed != args.pilot_version:
+        errors.append(f"Pilot {args.pilot_version} requested, but {installed} is installed")
+
+    root = bench_root(args)
+    if not (root / "bench.toml").is_file():
+        errors.append(f"bench manifest is missing: {root / 'bench.toml'}")
+    if not (root / "apps" / "frappe").is_dir():
+        errors.append("Frappe app checkout is missing")
+    if not (root / "sites" / "assets" / "assets.json").is_file():
+        errors.append("built asset manifest is missing")
+
+    expected_apps = [name for name, _, _ in apps_for_bench(args)]
+    for name in expected_apps:
+        if not (root / "apps" / name).is_dir():
+            errors.append(f"app checkout is missing: {name}")
+    for site_name in all_site_names(args):
+        site_config = root / "sites" / site_name / "site_config.json"
+        if not site_config.is_file():
+            errors.append(f"site is missing: {site_name}")
+            continue
+        installed_apps = site_installed_apps(args, site_name)
+        missing_apps = [name for name in expected_apps if name not in installed_apps]
+        if missing_apps:
+            errors.append(f"site {site_name} is missing apps: {', '.join(missing_apps)}")
+
+    if errors:
+        cprint("Development environment verification failed:", level=1)
+        for error in errors:
+            cprint(f"  - {error}", level=1)
+        sys.exit(1)
+
+    cprint(
+        f"Verified Pilot {installed}, Python {actual_python}, "
+        f"{len(expected_apps)} apps and {len(all_site_names(args))} site(s).",
+        level=2,
+    )
+
+
+def write_provisioning_record(args):
+    """Record resolved revisions without passwords, mirroring Chef image provenance."""
+    root = bench_root(args)
+    apps = {}
+    for name, repo, requested_ref in apps_for_bench(args):
+        apps[name] = {
+            "repo": repo,
+            "requested_ref": requested_ref,
+            "resolved_commit": app_commit(root / "apps" / name),
+        }
+    record = {
+        "schema_version": 1,
+        "verified_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "pilot": {
+            "requested_release": args.pilot_version,
+            "installed_release": installed_pilot_version(args),
+        },
+        "runtime": {
+            "python": sys.version.split()[0],
+            "node": command_output("node", "--version"),
+            "uv": command_output("uv", "--version"),
+        },
+        "bench": {
+            "name": args.bench_name,
+            "frappe_branch": args.frappe_branch,
+            "apps": apps,
+            "sites": all_site_names(args),
+        },
+    }
+    path = root / ".provisioning.json"
+    path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    cprint(f"Wrote resolved provisioning record to {path}", level=3)
 
 
 if __name__ == "__main__":

@@ -113,15 +113,31 @@ classic `bench` command is untouched and still works (see
 Benches live at `pilot/benches/<name>`. The installer drops a symlink at
 `development-bench` so the familiar path keeps working.
 
-### 1. Add a hosts entry (once per machine)
+The container and Pilot release are pinned so rebuilding the same commit does
+not silently pick up a different toolchain. To override a version locally, copy
+`.devcontainer/.env.example` to `.devcontainer/.env`, edit it, and rebuild the
+container. `PILOT_VERSION=latest` is supported for experiments, but is deliberately
+not the default.
 
-Pilot links to sites by site name — `http://development.cohenix:8000/desk`. Your
-browser cannot resolve `.cohenix`, so add it on your **host machine** (not inside
-the container):
+After provisioning, the installer verifies the runtime, app checkouts, built
+assets, and sites. It records the resolved app commits (without passwords) in
+`development-bench/.provisioning.json`. Re-run the checks without changing the
+environment at any time:
+
+    python installer.py --verify-only
+
+### 1. Site address
+
+The default site is `http://cohenix.localhost:8000/app`. The `.localhost` suffix
+resolves to loopback automatically on macOS, Linux, and Windows, so it needs no
+hosts-file entry.
+
+If you choose a custom name such as `development.cohenix`, add it on your **host
+machine** (not inside the container):
 
     echo "127.0.0.1 development.cohenix" | sudo tee -a /etc/hosts
 
-Without this you get `DNS_PROBE_FINISHED_NXDOMAIN`. `http://localhost:8000` works
+Without this a custom name gets `DNS_PROBE_FINISHED_NXDOMAIN`. `http://localhost:8000` works
 either way. Remember the `:8000` — a bare hostname goes to port 80 and gives
 `ERR_CONNECTION_REFUSED`.
 
@@ -131,7 +147,8 @@ The installer prints this line at the end of its run when the site name is not a
 ### 2. Start the bench
 
 The devcontainer `postStartCommand` starts it automatically each time the
-container starts. To start or restart it by hand:
+container starts and avoids launching a duplicate process. Startup output is in
+`/tmp/pilot-development-bench.log`. To start or restart it by hand:
 
     pilot -b development-bench start
 
@@ -143,7 +160,7 @@ Ctrl-C, or:
 
 | What | Where |
 |---|---|
-| Site | http://development.cohenix:8000 |
+| Site | http://cohenix.localhost:8000/app |
 | Pilot admin UI | http://localhost:8002 |
 | Mailpit | http://localhost:8025 |
 
@@ -168,8 +185,8 @@ to (default `admin`).
 Classic `bench` commands still work. Change into the bench directory first:
 
     cd development-bench
-    bench --site development.cohenix migrate
-    bench --site development.cohenix console
+    bench --site cohenix.localhost migrate
+    bench --site cohenix.localhost console
     bench build
 
 `migrate`, `build`, `console`, `execute`, `install-app`, `backup` and
@@ -187,7 +204,7 @@ pid files elsewhere. The installer creates it, and it is safe to recreate:
 Pilot's passthrough runs the same frappe commands from any directory, without the
 `cd`:
 
-    pilot -b development-bench frappe --site development.cohenix migrate
+    pilot -b development-bench frappe --site cohenix.localhost migrate
 
 ### Switch Between Containers
 - To switch between containers navigate to the bottom left corner and select the container icon

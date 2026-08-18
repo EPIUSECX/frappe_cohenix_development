@@ -3,7 +3,14 @@ FROM debian:bookworm-slim AS bench
 LABEL author=frappé
 
 ARG GIT_REPO=https://github.com/frappe/bench.git
-ARG GIT_BRANCH=v5.x
+ARG GIT_REF=v5.31.0
+ARG PYENV_REF=f5915fc8664f709fe79ec60d72720c6e20ddbe3c
+ARG PILOT_VERSION=v0.0.23-pre-alpha
+ARG UV_VERSION=0.11.33
+
+LABEL dev.cohenix.pilot-version=${PILOT_VERSION} \
+      dev.cohenix.bench-ref=${GIT_REF} \
+      dev.cohenix.pyenv-ref=${PYENV_REF}
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
@@ -103,12 +110,17 @@ WORKDIR /home/frappe
 
 # Install Python via pyenv
 ENV PYTHON_VERSION_V14=3.10.13
-ENV PYTHON_VERSION=3.14.2
+ARG PYTHON_VERSION=3.14.2
+ENV PYTHON_VERSION=${PYTHON_VERSION}
 ENV PYENV_ROOT=/home/frappe/.pyenv
 ENV PATH=$PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH
 
-# From https://github.com/pyenv/pyenv#basic-github-checkout
-RUN git clone --depth 1 https://github.com/pyenv/pyenv.git .pyenv \
+# Fetch an exact pyenv revision so a container rebuild uses the same compiler
+# bootstrap instead of whatever happens to be at the tip of the default branch.
+RUN git init .pyenv \
+    && git -C .pyenv remote add origin https://github.com/pyenv/pyenv.git \
+    && git -C .pyenv fetch --depth 1 origin ${PYENV_REF} \
+    && git -C .pyenv checkout --detach FETCH_HEAD \
     && pyenv install $PYTHON_VERSION_V14 \
     && pyenv install $PYTHON_VERSION \
     && PYENV_VERSION=$PYTHON_VERSION_V14 pip install --no-cache-dir virtualenv \
@@ -118,19 +130,21 @@ RUN git clone --depth 1 https://github.com/pyenv/pyenv.git .pyenv \
     && echo 'eval "$(pyenv init --path)"' >>~/.profile \
     && echo 'eval "$(pyenv init -)"' >>~/.bashrc
 
-# Clone and install bench in the local user home directory
+# Clone and install an exact bench release in the local user home directory.
 # For development, bench source is located in ~/.bench
 ENV PATH=/home/frappe/.local/bin:$PATH
 # Skip editable-bench warning
 # https://github.com/frappe/bench/commit/20560c97c4246b2480d7358c722bc9ad13606138
-RUN git clone ${GIT_REPO} --depth 1 -b ${GIT_BRANCH} .bench \
+RUN git clone ${GIT_REPO} --depth 1 -b ${GIT_REF} .bench \
     && pip install --no-cache-dir --user -e .bench \
+    && python -m pip install --no-cache-dir --user "uv==${UV_VERSION}" \
     && echo "export PATH=/home/frappe/.local/bin:\$PATH" >>/home/frappe/.bashrc \
     && echo "export BENCH_DEVELOPER=1" >>/home/frappe/.bashrc
 
 # Install Node via nvm
 ENV NODE_VERSION_14=16.20.2
-ENV NODE_VERSION=24.12.0
+ARG NODE_VERSION=24.12.0
+ENV NODE_VERSION=${NODE_VERSION}
 ENV NVM_DIR=/home/frappe/.nvm
 ENV PATH=${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/:${PATH}
 

@@ -46,6 +46,6 @@
     "initDevSite": ["python", "installer.py", "--db-type", "mariadb"]
   },
   "postStartCommand": {
-    "startBench": "setsid nohup pilot -b development-bench start > /tmp/pilot-start.log 2>&1 < /dev/null &"
+    "startBench": ["/workspace/scripts/start-dev.sh"]
   }
 }

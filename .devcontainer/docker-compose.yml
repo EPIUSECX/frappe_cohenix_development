@@ -1,15 +1,21 @@
 services:
   mariadb:
-    image: docker.io/mariadb:10.6
+    image: ${MARIADB_IMAGE:-docker.io/mariadb:10.6}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
       - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
     environment:
-      MYSQL_ROOT_PASSWORD: 123
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-123}
     volumes:
       - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
   # Enable PostgreSQL only if you use it, see development/README.md for more information.
   # postgresql:
@@ -35,27 +41,43 @@ services:
        MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
   redis-cache:
-    image: docker.io/redis:alpine
+    image: docker.io/redis:7-alpine
+    profiles: ["legacy-redis"]
 
   redis-queue:
-    image: docker.io/redis:alpine
+    image: docker.io/redis:7-alpine
+    profiles: ["legacy-redis"]
 
   redis-socketio:
-    image: docker.io/redis:alpine
+    image: docker.io/redis:7-alpine
+    profiles: ["legacy-redis"]
 
   frappe:
-    # build:
-    #   context: ..
-    #   dockerfile: resources/Dockerfile
-    image: docker.io/frappe/bench:latest
+    build:
+      context: ..
+      dockerfile: resources/Dockerfile
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.14.2}
+        NODE_VERSION: ${NODE_VERSION:-24.12.0}
+        UV_VERSION: ${UV_VERSION:-0.11.33}
+        PILOT_VERSION: ${PILOT_VERSION:-v0.0.23-pre-alpha}
+    image: frappe-cohenix-dev:${DEV_IMAGE_TAG:-v16}
+    init: true
     command: sleep infinity
     environment:
-      - SHELL=/bin/bash
+      SHELL: /bin/bash
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-123}
+      FRAPPE_BRANCH: ${FRAPPE_BRANCH:-version-16}
+      PILOT_VERSION: ${PILOT_VERSION:-v0.0.23-pre-alpha}
+      PYTHON_VERSION: ${PYTHON_VERSION:-3.14.2}
     volumes:
       - ..:/workspace:cached
       # Enable if you require git cloning
       # - ${HOME}/.ssh:/home/frappe/.ssh
     working_dir: /workspace
+    depends_on:
+      mariadb:
+        condition: service_healthy
     ports:
       - 8000-8005:8000-8005
       - 9000-9005:9000-9005
