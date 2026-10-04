@@ -118,6 +118,14 @@ because nested-docker bridge had no outbound HTTPS):
 - Unit tests: **27 passed**
 - Image size: **1.47 GiB** (1,539,801,676 bytes), Python 3.14.2 / Node v24.12.0
 - MariaDB **11.8.9**
+
+GitHub Actions image smoke on `241c9fb` (**passed**):
+
+- Fresh provisioning: **328s**
+- Repeat `devctl sync`: **0s**
+- `devctl doctor` → Environment healthy
+- HTTP, Socket.IO, restart persistence, and 9 in-container smoke tests passed
+- MariaDB **11.8.9**
 - Sites `cohenix.localhost` and `second.localhost` with frappe + erpnext + hrms
 - `assets.json` present
 - HTTP `frappe.ping` → `pong` on both Host headers

@@ -14,11 +14,21 @@ permissions:
 jobs:
   dependency-review:
     runs-on: ubuntu-latest
-    # The action requires GitHub Dependency graph. EPIUSECX repositories that
-    # have not enabled it should not block the development-environment PR.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - name: Check whether Dependency graph is enabled
+        id: graph
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/dependency-graph/sbom" --silent >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Dependency graph is not enabled; skipping review."
+          fi
+      - name: Review changed dependencies
+        if: steps.graph.outputs.enabled == 'true'
+        uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
