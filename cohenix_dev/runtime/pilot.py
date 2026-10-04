@@ -99,8 +99,38 @@ def _sha256(path: Path) -> str:
 
 
 def download_pilot_tarball(url: str, dest: Path) -> None:
-    with urllib.request.urlopen(url, timeout=120) as response, dest.open("wb") as out:  # noqa: S310
-        shutil.copyfileobj(response, out)
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            if which("curl"):
+                run_command(
+                    [
+                        "curl",
+                        "-fL",
+                        "--retry",
+                        "3",
+                        "--retry-delay",
+                        "2",
+                        "--connect-timeout",
+                        "30",
+                        "--max-time",
+                        "300",
+                        "-o",
+                        str(dest),
+                        url,
+                    ]
+                )
+            else:
+                with urllib.request.urlopen(url, timeout=300) as response, dest.open("wb") as out:  # noqa: S310
+                    shutil.copyfileobj(response, out)
+            if dest.stat().st_size > 0:
+                return
+            raise CohenixError(f"Downloaded empty Pilot archive from {url}")
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            cprint(f"Pilot download attempt {attempt} failed: {exc}", level=3)
+            dest.unlink(missing_ok=True)
+    raise CohenixError(f"Could not download Pilot from {url}: {last_error}") from last_error
 
 
 def extract_pilot_tarball(archive: Path, dest: Path) -> None:
