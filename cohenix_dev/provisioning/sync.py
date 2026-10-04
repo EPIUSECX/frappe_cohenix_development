@@ -46,8 +46,10 @@ def sync_environment(settings: Settings, *, verify: bool = True) -> None:
     ensure_classic_bench_compat(settings)
     ensure_app_history(settings)
 
+    created_or_installed = False
     if plan.create_sites or plan.install_apps or not current:
         create_sites(settings)
+        created_or_installed = True
     else:
         if plan.install_apps:
             app_names = [spec.name for spec in settings.apps()]
@@ -57,12 +59,15 @@ def sync_environment(settings: Settings, *, verify: bool = True) -> None:
         if plan.rebuild_assets:
             ensure_assets_built(settings)
 
-    if plan.migrate_sites:
+    # Site create/install-app already migrates. Extra migrate is only for app
+    # revision changes, and Frappe refuses to migrate without Redis.
+    if plan.migrate_sites and not created_or_installed:
         from cohenix_dev.runtime.pilot import run_pilot
 
-        for site in plan.migrate_sites:
-            cprint(f"Migrating {site} ...", level=2)
-            run_pilot(settings, "--bench", settings.bench_name, "frappe", "--site", site, "migrate")
+        with redis_running(settings):
+            for site in plan.migrate_sites:
+                cprint(f"Migrating {site} ...", level=2)
+                run_pilot(settings, "--bench", settings.bench_name, "frappe", "--site", site, "migrate")
 
     if verify:
         verify_installation(settings)

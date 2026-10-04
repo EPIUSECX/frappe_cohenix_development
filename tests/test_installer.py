@@ -201,6 +201,20 @@ class InterpreterTests(unittest.TestCase):
                 self.assertEqual(parts[0], str(Path(directory) / "bin"))
                 self.assertIn(str(Path.home() / ".local" / "bin"), parts)
 
+    def test_bench_start_shim_wraps_venv_console_script(self):
+        from cohenix_dev.config import BENCH_SHIM_MARKER
+        from cohenix_dev.runtime.pilot import ensure_bench_start_shim
+
+        with tempfile.TemporaryDirectory() as directory:
+            bin_dir = Path(directory) / "bin"
+            bin_dir.mkdir()
+            (bin_dir / "bench").write_text("#!/bin/sh\necho classic\n")
+            (bin_dir / "bench").chmod(0o755)
+            with mock.patch.dict(os.environ, {"VIRTUAL_ENV": directory}):
+                ensure_bench_start_shim()
+            self.assertTrue((bin_dir / "bench.frappe").is_file())
+            self.assertIn(BENCH_SHIM_MARKER, (bin_dir / "bench").read_text())
+
 
 class ToolchainAgreementTests(unittest.TestCase):
     def test_export_script_matches_toolchain_file(self):

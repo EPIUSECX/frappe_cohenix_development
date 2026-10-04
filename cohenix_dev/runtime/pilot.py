@@ -262,31 +262,39 @@ def ensure_pilot_on_path(settings: Settings) -> None:
 
 
 def ensure_bench_start_shim() -> None:
-    bin_dir = Path.home() / ".local" / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    wrapper = bin_dir / "bench"
-    real = bin_dir / "bench.frappe"
-    already_shimmed = wrapper.is_file() and BENCH_SHIM_MARKER in wrapper.read_text(errors="ignore")
-    if wrapper.exists() and not already_shimmed and not real.exists():
-        wrapper.rename(real)
-    if not real.exists():
-        cprint(
-            f"No frappe/bench console-script found to wrap at {wrapper}, skipping bench-start shim",
-            level=3,
+    """Make `bench start` call Pilot. Wrap the venv console script when present."""
+    locations: list[Path] = []
+    venv = os.environ.get("VIRTUAL_ENV")
+    if venv:
+        locations.append(Path(venv) / "bin")
+    locations.append(Path.home() / ".local" / "bin")
+    for bin_dir in locations:
+        wrapper = bin_dir / "bench"
+        if not wrapper.exists() and not (bin_dir / "bench.frappe").exists():
+            continue
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        real = bin_dir / "bench.frappe"
+        already_shimmed = wrapper.is_file() and BENCH_SHIM_MARKER in wrapper.read_text(errors="ignore")
+        if already_shimmed:
+            return
+        if wrapper.exists() and not real.exists():
+            wrapper.rename(real)
+        if not real.exists():
+            continue
+        wrapper.write_text(
+            "#!/usr/bin/env bash\n"
+            f"{BENCH_SHIM_MARKER}\n"
+            'if [ "${1:-}" = "start" ]; then\n'
+            "    shift\n"
+            '    exec pilot -b "$(basename "$PWD")" start "$@"\n'
+            "else\n"
+            f'    exec "{real}" "$@"\n'
+            "fi\n"
         )
+        wrapper.chmod(0o755)
+        cprint(f"`bench start` now delegates to Pilot ({wrapper})", level=3)
         return
-    wrapper.write_text(
-        "#!/usr/bin/env bash\n"
-        f"{BENCH_SHIM_MARKER}\n"
-        'if [ "${1:-}" = "start" ]; then\n'
-        "    shift\n"
-        '    exec pilot -b "$(basename "$PWD")" start "$@"\n'
-        "else\n"
-        f'    exec "{real}" "$@"\n'
-        "fi\n"
-    )
-    wrapper.chmod(0o755)
-    cprint(f"`bench start` now delegates to Pilot ({wrapper})", level=3)
+    cprint("No frappe/bench console-script found to wrap, skipping bench-start shim", level=3)
 
 
 def bench_subprocess_env(settings: Settings | None = None) -> dict[str, str]:
