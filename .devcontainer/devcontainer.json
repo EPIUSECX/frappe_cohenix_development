@@ -1,51 +1,135 @@
 {
-  "name": "Frappe",
-  "forwardPorts": [8000, 9000, 6787],
+  "name": "Cohenix Frappe v16",
   "remoteUser": "frappe",
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "ms-python.python",
-        "ms-vscode.live-server",
-        "mtxr.sqltools",
-        "cweijan.vscode-database-client2",
-        "ms-azuretools.vscode-docker",
-        "anthropic.claude-code",
-        "mhutchie.git-graph"
-      ],
-      "settings": {
-        "terminal.integrated.defaultProfile.linux": "bash",
-        "debug.node.autoAttach": "disabled",
-         "workbench.colorCustomizations": {
-            "activityBar.activeBackground": "#3a6ea5",
-            "activityBar.background": "#274472",
-            "activityBar.foreground": "#ffffff",
-            "activityBar.inactiveForeground": "#f8f8f899",
-            "activityBarBadge.background": "#1b2845",
-            "activityBarBadge.foreground": "#ffffff",
-            "commandCenter.border": "#15202b99",
-            "sash.hoverBorder": "#5fa8d3",
-            "statusBar.background": "#19376d",
-            "statusBar.foreground": "#e7e8e9",
-            "statusBarItem.hoverBackground": "#274472",
-            "statusBarItem.remoteBackground": "#1b2845",
-            "statusBarItem.remoteForeground": "#ffffff",
-            "titleBar.activeBackground": "#205295",
-            "titleBar.activeForeground": "#fbfbfb",
-            "titleBar.inactiveBackground": "#19376d",
-            "titleBar.inactiveForeground": "#ffffff99"
-        }
-      }
-    }
-  },
   "dockerComposeFile": "./docker-compose.yml",
   "service": "frappe",
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
-  "postCreateCommand": {
-    "initDevSite": ["python", "installer.py", "--db-type", "mariadb"]
+  "forwardPorts": [8000, 8002, 9000, 6787, 8025, 1025],
+  "portsAttributes": {
+    "8000": {
+      "label": "Frappe HTTP",
+      "protocol": "http",
+      "onAutoForward": "notify"
+    },
+    "8001-8005": {
+      "label": "Frappe HTTP (extra benches)",
+      "protocol": "http",
+      "onAutoForward": "silent"
+    },
+    "8002": {
+      "label": "Pilot admin UI",
+      "protocol": "http",
+      "onAutoForward": "silent"
+    },
+    "9000": {
+      "label": "Frappe realtime / Socket.IO",
+      "onAutoForward": "silent"
+    },
+    "9001-9005": {
+      "label": "Frappe realtime (extra benches)",
+      "onAutoForward": "silent"
+    },
+    "6787": {
+      "label": "Frappe asset watcher",
+      "onAutoForward": "silent"
+    },
+    "8025": {
+      "label": "Mailpit UI",
+      "protocol": "http",
+      "onAutoForward": "silent"
+    },
+    "1025": {
+      "label": "Mailpit SMTP",
+      "onAutoForward": "ignore"
+    }
   },
-  "postStartCommand": {
-    "startBench": ["/workspace/scripts/start-dev.sh"]
+  "otherPortsAttributes": {
+    "onAutoForward": "ignore"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+        "esbenp.prettier-vscode",
+        "vue.volar",
+        "ms-vscode.live-server",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-mysql",
+        "ms-azuretools.vscode-docker",
+        "mhutchie.git-graph"
+      ],
+      "settings": {
+        "remote.autoForwardPorts": true,
+        "remote.autoForwardPortsSource": "process",
+        "remote.restoreForwardedPorts": true,
+        "remote.localPortHost": "localhost",
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "debug.node.autoAttach": "disabled",
+        "python.defaultInterpreterPath": "/home/frappe/pilot/benches/development-bench/env/bin/python",
+        "python.terminal.activateEnvironment": true,
+        "editor.formatOnSave": true,
+        "editor.rulers": [110],
+        "files.trimTrailingWhitespace": true,
+        "ruff.nativeServer": "on",
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        },
+        "[json]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[javascript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[vue]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "sqltools.connections": [
+          {
+            "mysqlOptions": {
+              "authProtocol": "default",
+              "enableSsl": "Disabled"
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "mariadb",
+            "port": 3306,
+            "driver": "MariaDB",
+            "name": "MariaDB",
+            "username": "root",
+            "password": "123",
+            "database": "mysql"
+          }
+        ],
+        "workbench.colorCustomizations": {
+          "activityBar.activeBackground": "#3a6ea5",
+          "activityBar.background": "#274472",
+          "activityBar.foreground": "#ffffff",
+          "activityBar.inactiveForeground": "#f8f8f899",
+          "activityBarBadge.background": "#1b2845",
+          "activityBarBadge.foreground": "#ffffff",
+          "commandCenter.border": "#15202b99",
+          "sash.hoverBorder": "#5fa8d3",
+          "statusBar.background": "#19376d",
+          "statusBar.foreground": "#e7e8e9",
+          "statusBarItem.hoverBackground": "#274472",
+          "statusBarItem.remoteBackground": "#1b2845",
+          "statusBarItem.remoteForeground": "#ffffff",
+          "titleBar.activeBackground": "#205295",
+          "titleBar.activeForeground": "#fbfbfb",
+          "titleBar.inactiveBackground": "#19376d",
+          "titleBar.inactiveForeground": "#ffffff99"
+        }
+      }
+    }
+  },
+  "onCreateCommand": "/workspace/scripts/on-create.sh",
+  "postCreateCommand": "/workspace/scripts/post-create.sh",
+  "postStartCommand": "/workspace/scripts/start-dev.sh",
+  "containerEnv": {
+    "PILOT_DIR": "/home/frappe/pilot",
+    "COHENIX_WORKSPACE": "/workspace"
   }
 }

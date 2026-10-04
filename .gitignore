@@ -9,8 +9,9 @@ dist/
 # build/
 frappe/docs/current
 frappe/public/dist
-.vscode
 .vs
+# Keep committed VS Code tasks and recommended extensions.
+# .vscode/
 node_modules
 .kdev4/
 *.kdev4
@@ -198,18 +199,15 @@ billing/node_modules
 frappe/public/billing
 frappe/www/billing.html
 
-# Bench
+# Frappe app leftovers that do not apply to this platform repository.
 patches.txt
 Procfile
-sites
-config
 
-README.md
-
-# Cohenix
+# Cohenix runtime (never commit a provisioned bench)
 development-bench
-
-# Pilot install + its benches (installer.py --pilot-dir), and the convenience
-# symlink it drops at <repo>/<bench-name> for a non-default bench name.
+.cohenix/
 /pilot/
 /pilot-bench
+docs/last-smoke-metrics.txt
+docs/last-image-size.txt
+pilot-canary-report.md

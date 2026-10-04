@@ -1,0 +1,68 @@
+# Cohenix Frappe v16 development toolchain.
+# Single source of truth for image builds, Dev Container, CI, and devctl.
+# Do not use floating tags such as "latest" for runtime dependencies.
+
+schema_version = 1
+
+[image]
+registry = "ghcr.io"
+name = "epiusecx/cohenix-frappe-dev"
+tag = "v16"
+debian = "bookworm"
+
+[python]
+version = "3.14.2"
+# Prebuilt CPython via uv; the v16 image does not compile Python with pyenv.
+
+[node]
+version = "24.12.0"
+yarn = "1.22.22"
+
+[uv]
+version = "0.11.33"
+
+[bench]
+repo = "https://github.com/frappe/bench.git"
+ref = "v5.31.0"
+
+[frappe]
+repo = "https://github.com/frappe/frappe"
+branch = "version-16"
+
+[pilot]
+# Pinned release used by the normal developer path. Never set this to "latest".
+version = "v0.0.23-pre-alpha"
+sha256 = "164cbe4496f51fd494bd868cde93f0e7303a6500e4382351415597292ecef1b4"
+# Newer release exercised by the scheduled canary workflow. Not auto-promoted.
+canary_version = "v0.0.55-pre-alpha"
+canary_sha256 = "503f913d5e6b1c23403f66c7d8e203d7eea969ddef9ab3867b85e364bf1775a7"
+
+[database]
+mariadb_image = "docker.io/library/mariadb:11.8.9"
+postgres_image = "docker.io/library/postgres:16.10-bookworm"
+
+[optional]
+mailpit_image = "docker.io/axllent/mailpit:v1.31.4"
+redis_image = "docker.io/library/redis:7.4.2-alpine"
+cypress_image = "docker.io/cypress/included:13.17.0"
+
+[wkhtmltopdf]
+version = "0.12.6.1-3"
+distro = "bookworm"
+
+[nvm]
+# Kept only as a documented fallback. The v16 image installs Node from nodejs.org.
+version = "v0.40.8"
+
+[defaults]
+bench_name = "development-bench"
+site_name = "cohenix.localhost"
+profile = "hr"
+admin_password = "admin"
+db_root_password = "123"
+http_port = 8000
+socketio_port = 9000
+admin_port = 8002
+pilot_dir = "/home/frappe/pilot"
+workspace = "/workspace"
+provisioner_schema = 2

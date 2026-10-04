@@ -1,0 +1,18 @@
+# Verified download checksums for the v16 development image and Pilot installer.
+# Keys are filenames as downloaded.
+
+[uv]
+"uv-x86_64-unknown-linux-gnu.tar.gz" = "aa9fca823c03289fb6e3460b3dc864f3ea895cafaf9b99247701a67b17d1b018"
+"uv-aarch64-unknown-linux-gnu.tar.gz" = "9ed88a9a42de3102f9704d021ab186fdf8a69a7ad9a1d3f3486ac6b1e55d6141"
+
+[node]
+"node-v24.12.0-linux-x64.tar.xz" = "bdebee276e58d0ef5448f3d5ac12c67daa963dd5e0a9bb621a53d1cefbc852fd"
+"node-v24.12.0-linux-arm64.tar.xz" = "a06d42807fb500f7459e5f3fa6cb431447352826ee6f07e14adfeec58a1b3210"
+
+[wkhtmltopdf]
+"wkhtmltox_0.12.6.1-3.bookworm_amd64.deb" = "98ba0d157b50d36f23bd0dedf4c0aa28c7b0c50fcdcdc54aa5b6bbba81a3941d"
+"wkhtmltox_0.12.6.1-3.bookworm_arm64.deb" = "b6606157b27c13e044d0abbe670301f88de4e1782afca4f9c06a5817f3e03a9c"
+
+[pilot]
+"v0.0.23-pre-alpha" = "164cbe4496f51fd494bd868cde93f0e7303a6500e4382351415597292ecef1b4"
+"v0.0.55-pre-alpha" = "503f913d5e6b1c23403f66c7d8e203d7eea969ddef9ab3867b85e364bf1775a7"

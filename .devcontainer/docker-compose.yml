@@ -1,13 +1,13 @@
 services:
   mariadb:
-    image: ${MARIADB_IMAGE:-docker.io/mariadb:10.6}
+    image: ${MARIADB_IMAGE:-docker.io/library/mariadb:11.8.9}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-123}
+      MARIADB_AUTO_UPGRADE: 1
     volumes:
       - mariadb-data:/var/lib/mysql
     healthcheck:
@@ -16,53 +16,61 @@ services:
       timeout: 5s
       retries: 20
       start_period: 20s
+    # Not published on the host. Reach it as hostname `mariadb` from the Frappe container.
 
-  # Enable PostgreSQL only if you use it, see development/README.md for more information.
-  # postgresql:
-  #   image: docker.io/postgres:11.8
-  #   environment:
-  #     POSTGRES_PASSWORD: 123
-  #   volumes:
-  #     - postgresql-data:/var/lib/postgresql/data
+  postgresql:
+    image: ${POSTGRES_IMAGE:-docker.io/library/postgres:16.10-bookworm}
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_PASSWORD: ${DB_ROOT_PASSWORD:-123}
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
-  # Enable Mailpit if you need to test outgoing mail services
-  # See https://mailpit.axllent.org/
   mailpit:
-     image: axllent/mailpit
-     volumes:
-       - mailpit-data:/data
-     ports:
-       - 8025:8025
-       - 1025:1025
-     environment:
-       MP_MAX_MESSAGES: 5000
-       MP_DATA_FILE: /data/mailpit.db
-       MP_SMTP_AUTH_ACCEPT_ANY: 1
-       MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    image: ${MAILPIT_IMAGE:-docker.io/axllent/mailpit:v1.31.4}
+    profiles: ["mail"]
+    volumes:
+      - mailpit-data:/data
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_DATA_FILE: /data/mailpit.db
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    # Ports are forwarded from the Dev Container, not published host-wide.
 
   redis-cache:
-    image: docker.io/redis:7-alpine
+    image: ${REDIS_IMAGE:-docker.io/library/redis:7.4.2-alpine}
     profiles: ["legacy-redis"]
 
   redis-queue:
-    image: docker.io/redis:7-alpine
+    image: ${REDIS_IMAGE:-docker.io/library/redis:7.4.2-alpine}
     profiles: ["legacy-redis"]
 
   redis-socketio:
-    image: docker.io/redis:7-alpine
+    image: ${REDIS_IMAGE:-docker.io/library/redis:7.4.2-alpine}
     profiles: ["legacy-redis"]
 
   frappe:
+    image: ${COHENIX_DEV_IMAGE:-ghcr.io/epiusecx/cohenix-frappe-dev:v16}
     build:
       context: ..
-      dockerfile: resources/Dockerfile
+      dockerfile: images/v16/Dockerfile
+      target: cohenix-v16
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.14.2}
         NODE_VERSION: ${NODE_VERSION:-24.12.0}
+        YARN_VERSION: ${YARN_VERSION:-1.22.22}
         UV_VERSION: ${UV_VERSION:-0.11.33}
         PILOT_VERSION: ${PILOT_VERSION:-v0.0.23-pre-alpha}
-    image: frappe-cohenix-dev:${DEV_IMAGE_TAG:-v16}
+        BENCH_REF: ${BENCH_REF:-v5.31.0}
+        COHENIX_IMAGE_TAG: ${DEV_IMAGE_TAG:-v16}
     init: true
+    pull_policy: missing
     command: sleep infinity
     environment:
       SHELL: /bin/bash
@@ -70,45 +78,50 @@ services:
       FRAPPE_BRANCH: ${FRAPPE_BRANCH:-version-16}
       PILOT_VERSION: ${PILOT_VERSION:-v0.0.23-pre-alpha}
       PYTHON_VERSION: ${PYTHON_VERSION:-3.14.2}
+      NODE_VERSION: ${NODE_VERSION:-24.12.0}
+      PILOT_DIR: /home/frappe/pilot
+      COHENIX_WORKSPACE: /workspace
+      PYTHONPATH: /workspace
+      COHENIX_PROFILE: ${COHENIX_PROFILE:-hr}
+      COHENIX_IMAGE_REF: ${COHENIX_DEV_IMAGE:-ghcr.io/epiusecx/cohenix-frappe-dev:v16}
+      UV_CACHE_DIR: /home/frappe/.cache/uv
+      YARN_CACHE_FOLDER: /home/frappe/.cache/yarn
+      npm_config_cache: /home/frappe/.npm
     volumes:
       - ..:/workspace:cached
-      # Enable if you require git cloning
-      # - ${HOME}/.ssh:/home/frappe/.ssh
+      - cohenix-pilot:/home/frappe/pilot
+      - cohenix-uv-cache:/home/frappe/.cache/uv
+      - cohenix-yarn-cache:/home/frappe/.cache/yarn
+      - cohenix-npm-cache:/home/frappe/.npm
     working_dir: /workspace
     depends_on:
       mariadb:
         condition: service_healthy
-    ports:
-      - 8000-8005:8000-8005
-      - 9000-9005:9000-9005
-  # enable the below service if you need Cypress UI Tests to be executed
-  # Before enabling ensure install_x11_deps.sh has been executed and display variable is exported.
-  # Run install_x11_deps.sh again if DISPLAY is not set
-  # ui-tester:
-  #   # pass custom command to start Cypress otherwise it will use the entrypoint
-  #   # specified in the Cypress Docker image.
-  #   # also pass "--project <folder>" so that when Cypress opens
-  #   # it can find file "cypress.json" and show integration specs
-  #   # https://on.cypress.io/command-line#cypress-open
-  #   entrypoint: 'sleep infinity'
-  #   image: "docker.io/cypress/included:latest"
-  #   environment:
-  #     - SHELL=/bin/bash
-  #     # get the IP address of the host machine and allow X11 to accept
-  #     # incoming connections from that IP address
-  #     #   IP=$(ipconfig getifaddr en0) or mac or \
-  #     #   IP=$($(hostname -I | awk '{print $1}') )  for Ubuntu
-  #     #   /usr/X11/bin/xhost + $IP
-  #     # then pass the environment variable DISPLAY to show Cypress GUI on the host system
-  #     #   DISPLAY=$IP:0
-  #     - DISPLAY
-  #   volumes:
-  #     # for Cypress to communicate with the X11 server pass this socket file
-  #     # in addition to any other mapped volumes
-  #     - /tmp/.X11-unix:/tmp/.X11-unix
-  #     - ..:/workspace:z,cached
-  #   network_mode: "host"
+    healthcheck:
+      test: ["CMD", "python3", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # Development HTTP/realtime ports are forwarded by devcontainer.json,
+    # not published on the host, so several environments can run at once.
+
+  ui-tester:
+    profiles: ["ui-tests"]
+    image: ${CYPRESS_IMAGE:-docker.io/cypress/included:13.17.0}
+    entrypoint: sleep infinity
+    environment:
+      SHELL: /bin/bash
+      DISPLAY: ${DISPLAY:-}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ..:/workspace:z,cached
+    network_mode: host
+
 volumes:
   mariadb-data:
-  #postgresql-data:
+  postgresql-data:
   mailpit-data:
+  cohenix-pilot:
+  cohenix-uv-cache:
+  cohenix-yarn-cache:
+  cohenix-npm-cache:

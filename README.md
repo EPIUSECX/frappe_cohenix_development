@@ -1,334 +1,220 @@
-<div align="center">
-    <h2>Cohenix - Frappe Local Development Container</h2>
+# Cohenix Frappe v16 development environment
 
-</div>
+This repository is the standard development platform for Cohenix Frappe
+developers, CI jobs, GitHub Codespaces, Cursor cloud agents, and other
+coding agents.
 
-This repository is maintained by Cohenix, a subsidiary of the Group Elephant Fund and part of the EPI-USE group of companies. Our solution builds on the Frappe.io framework, integrating custom modules tailored to client needs. For inquiries, terms of use or contributions, please contact the Cohenix development team at christiaan.swart@epiuse.com
+It is maintained by Cohenix, part of the EPI-USE group. Contact:
+christiaan.swart@epiuse.com
 
-## Introduction
+## New developer path
 
-Chohenix devcontainer allow quick and easy setup of the development environment on local VS Code instance, a ready out of the box development environment.
+You need Git, Docker, and VS Code (or Cursor) with the Dev Containers
+extension. You do **not** need a local Python or Node install, and you do
+**not** need to edit `/etc/hosts` for the default site.
 
-## Frappe Repositories
+```bash
+git clone https://github.com/EPIUSECX/frappe_cohenix_development.git
+cd frappe_cohenix_development
+```
 
-- cohenix_erp
-- cohenix_hr
-- cohenix_crm
-- cohenix_learning
-- cohenix_payment
-- cohenix_helpdesk
+Open the folder in VS Code or Cursor and choose **Reopen in Container**.
 
-## Index / Quick links
-* [Prerequisites](#prerequisites)
-* [How to Setup](#how-to-setup)
-* [After the Install](#after-the-install)
-* [Running Bench Commands](#running-bench-commands)
-* [Git Commands](#git-commands)
+When the container is ready:
 
-## Prerequisites
+```bash
+devctl sync
+devctl doctor
+```
 
-    Please note:
+The default site is [http://cohenix.localhost:8000/app](http://cohenix.localhost:8000/app).
+Administrator password: `admin`.
 
-    The following software and accounts are required to run a succefull docker development environment, if you have not installed or created accounts for the following please do so now before moving on.
-    
-    If you rquire instructions in how to install the following please refer to the Cohenix development resource: https://github.com/epiusegs/cohenix_dev_resources
+That is the whole happy path. `devctl` talks to Pilot, Bench, MariaDB, and
+Redis for you.
 
-- VS Code
+### Cloud agents and CI
 
-      https://code.visualstudio.com/
+```bash
+devcontainer up --workspace-folder .
+devcontainer exec --workspace-folder . devctl sync
+devcontainer exec --workspace-folder . devctl verify
+```
 
-- Git
+Or with Compose directly:
 
-      https://git-scm.com/
+```bash
+docker compose -f .devcontainer/docker-compose.yml up -d --build
+docker compose -f .devcontainer/docker-compose.yml exec frappe devctl sync
+docker compose -f .devcontainer/docker-compose.yml exec frappe devctl doctor
+```
 
-- GitHub
+No Docker Desktop UI, no interactive installer, no host Python/Node, and no
+`/etc/hosts` change for `*.localhost` names.
 
-      https://github.com/
+## What you get
 
-- Docker
+Three layers:
 
-      https://docs.docker.com/get-started/get-docker/
+1. **Cohenix development image** — `ghcr.io/epiusecx/cohenix-frappe-dev:v16`
+   with Python 3.14, Node 24, Yarn, uv, Bench, Redis server, MariaDB client,
+   and PDF libraries. Developers pull this image; they do not compile Python.
+2. **Dev Container / Compose** — MariaDB 11.8, the Frappe container, optional
+   Mailpit/Postgres/UI-test profiles, named volumes for Pilot and caches.
+3. **`devctl`** — environment setup, health, apps, sites, recovery, diagnostics.
 
-- Docker Desktop
+Versions live in `toolchain.toml`. The image, Compose file, CI, and `devctl`
+all read from it.
 
-      https://docs.docker.com/desktop/
+## Common commands
 
-## How to Setup
+| Command | Purpose |
+|---|---|
+| `devctl sync` | Create or update the bench, apps, and sites. Safe to re-run. |
+| `devctl doctor` | Diagnose the stack and print fixes for failures. |
+| `devctl verify` | Fail if the provisioned environment is incomplete. |
+| `devctl status` | Short health view. |
+| `devctl start` / `stop` / `restart` | Pilot process set (web, workers, Socket.IO, Redis, scheduler). |
+| `devctl site create second.localhost` | Extra site on the same HTTP port (Host routing). |
+| `devctl site reset cohenix.localhost --yes` | Drop one site. |
+| `devctl app add https://github.com/org/app --branch version-16` | Add an app overlay. |
+| `devctl app remove hrms` | Remove an overlay app. |
+| `devctl profile use hr` | Select an application set. |
+| `devctl reset --caches --yes` | Drop uv/yarn/npm/asset caches. |
+| `devctl reset --bench --yes` | Drop env/sites/config; keep app checkouts. |
+| `devctl reset --all --yes` | Drop all benches under `PILOT_DIR`. Never deletes this git repo. |
 
-* [Initial Container Setup](#initial-container-setup)
-* [Switch Between Containers](#switch-between-containers)
+`python installer.py` still works and calls `devctl sync`. Prefer `devctl`.
 
-### Initial Container Setup
-- Create a folder where you will clone the git repository projects (example: projects)
-- Navigate to the folder
-  - cd < your folder >
+Classic Bench commands still work after `cd development-bench`. `bench start`
+is shimmed to Pilot. Prefer `devctl start`.
 
-- Clone repository
-  - git clone https://github.com/EPIUSECX/frappe_cohenix_development.git
-  
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_01.png)
+## Profiles
 
-- Open VS Code and installed the following plugins.
-  - Container Tools
-  - Database Client
-  - Database Client JDBC
-  - Docker
+Application sets are declared in `config/profiles.toml`. Repositories are
+real Frappe/EPIUSECX URLs, not invented names.
 
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_02.png)
- 
-- While In VS Code select "Open folder"
-- Navigate to the project folder that was created in first step
-- Select the project that you have cloned
-  - (example: frappe_cohenix_development)
+| Profile | Apps |
+|---|---|
+| `frappe` | frappe |
+| `erp` | frappe, erpnext |
+| `hr` | frappe, erpnext, hrms (**default**) |
+| `localisation` | hr + `za_local_core`, `za_local` (`cohenix_local_za`), `za_local_payroll` |
+| `integrations` | erp + payments + ecommerce_integrations |
+| `full-cohenix` | localisation + payments + ecommerce_integrations |
 
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_03.png)
-  
-- VS Code will open the project and prompt you to "Reopen in Dev Container" click button to confirm:
+```bash
+devctl profile use hr
+devctl sync
+devctl profile use localisation
+devctl sync
+```
 
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_04.png)
-  
-- The initial docker image will be pulled and installed, you can view the image in Docker Desktop:
-  
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_05.png)
-  
-- In VS Code the script will then be run and you will be able to view the progress in the 
-  "development-bench" Logs folder:
-  
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_06.png)
+Project-specific apps: set `COHENIX_APPS_JSON=/path/to/apps.json` (frappe_docker
+shape) or `devctl app add <repository>`. Local overlay: `.cohenix/apps.overlay.toml`.
 
-- Once the script has finished runnig you can now safely cd to the bench folder and run commands (cd development-bench/)
+## Recovery
 
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_07.png)
+`devctl sync` repairs safe, incomplete state:
 
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_08.png)
+- half-created Python environments
+- `pilot new` without `pilot init`
+- missing Redis config
+- missing `assets.json`
+- sites that exist but are missing apps
+- shallow Pilot clones
 
-## After the Install
+Destructive recovery is explicit:
 
-The bench is managed by [Pilot](https://github.com/frappe/pilot), which replaces
-frappe/bench 5.x as the bench manager. Pilot's own executable is also called
-`bench`, so `installer.py` installs it under the name **`pilot`** instead — the
-classic `bench` command is untouched and still works (see
-[Running Bench Commands](#running-bench-commands)).
+```bash
+devctl site reset <site> --yes
+devctl reset --caches --yes
+devctl reset --bench --yes
+devctl reset --all --yes
+```
 
-Benches live at `pilot/benches/<name>`. The installer drops a symlink at
-`development-bench` so the familiar path keeps working.
+Non-interactive sessions require `--yes`. CI never prompts.
 
-The container and Pilot release are pinned so rebuilding the same commit does
-not silently pick up a different toolchain. To override a version locally, copy
-`.devcontainer/.env.example` to `.devcontainer/.env`, edit it, and rebuild the
-container. `PILOT_VERSION=latest` is supported for experiments, but is deliberately
-not the default.
+## Updating Pilot
 
-After provisioning, the installer verifies the runtime, app checkouts, built
-assets, and sites. It records the resolved app commits (without passwords) in
-`development-bench/.provisioning.json`. Re-run the checks without changing the
-environment at any time:
+The pinned release is `toolchain.toml` → `[pilot].version`. It is **not**
+`latest`.
 
-    python installer.py --verify-only
+1. Put the candidate tag in `[pilot].canary_version` (and its SHA256).
+2. Wait for `.github/workflows/pilot-canary.yml` (Monday schedule or
+   workflow_dispatch).
+3. If the canary smoke test passes, bump `[pilot].version` and `sha256` in a
+   reviewable commit. Do not auto-promote.
 
-### 1. Site address
+## Updating runtime versions
 
-The default site is `http://cohenix.localhost:8000/app`. The `.localhost` suffix
-resolves to loopback automatically on macOS, Linux, and Windows, so it needs no
-hosts-file entry.
+Edit `toolchain.toml`, then:
 
-If you choose a custom name such as `development.cohenix`, add it on your **host
-machine** (not inside the container):
+1. Keep Dockerfile ARG defaults, `.devcontainer/.env.example`, and Compose
+   defaults in agreement (unit tests check this).
+2. Rebuild and publish the image (see below).
+3. Rebuild Dev Containers so they pull the new tag.
 
-    echo "127.0.0.1 development.cohenix" | sudo tee -a /etc/hosts
+Python 3.14 and Node 24 are required for Frappe v16. Do not add Python 3.10
+or Node 16 to this image. Legacy runtimes belong on `version-15_cohenix`.
 
-Without this a custom name gets `DNS_PROBE_FINISHED_NXDOMAIN`. `http://localhost:8000` works
-either way. Remember the `:8000` — a bare hostname goes to port 80 and gives
-`ERR_CONNECTION_REFUSED`.
+## Publishing a development image
 
-The installer prints this line at the end of its run when the site name is not a
-`.localhost` name.
+```bash
+python scripts/export_toolchain.py
+docker build -f images/v16/Dockerfile -t ghcr.io/epiusecx/cohenix-frappe-dev:v16 .
+```
 
-### 2. Start the bench
+CI (`.github/workflows/image.yml`) builds the image, runs the environment
+smoke test (real site, ERPNext, Frappe HR, HTTP, Socket.IO, restart,
+idempotent sync), and **only then** publishes `linux/amd64` and `linux/arm64`
+to GHCR from `version-16_cohenix`.
 
-The devcontainer `postStartCommand` starts it automatically each time the
-container starts and avoids launching a duplicate process. Startup output is in
-`/tmp/pilot-development-bench.log`. To start or restart it by hand:
+Local image work:
 
-    pilot -b development-bench start
+```bash
+docker compose -f .devcontainer/docker-compose.yml build frappe
+```
 
-This is the foreground runner — the direct equivalent of the old `bench start`.
-It starts web, workers, socket.io, Pilot's own Redis, and the admin UI. Stop with
-Ctrl-C, or:
+`pull_policy: missing` uses a local build when GHCR does not have the tag yet.
 
-    pilot -b development-bench stop
+## Compose profiles
+
+Default stack: `mariadb` + `frappe`.
+
+```bash
+docker compose -f .devcontainer/docker-compose.yml --profile mail up -d
+docker compose -f .devcontainer/docker-compose.yml --profile postgres up -d
+docker compose -f .devcontainer/docker-compose.yml --profile ui-tests up -d
+docker compose -f .devcontainer/docker-compose.yml --profile legacy-redis up -d
+```
+
+MariaDB and Redis are not published on the host. Frappe HTTP/realtime ports
+are forwarded by the Dev Container, not `ports:` in Compose, so several
+environments can run without collisions.
+
+## URLs and passwords
 
 | What | Where |
 |---|---|
 | Site | http://cohenix.localhost:8000/app |
-| Pilot admin UI | http://localhost:8002 |
-| Mailpit | http://localhost:8025 |
-
-The admin UI password is in `pilot/benches/development-bench/bench.toml` under
-`[admin]`. The site Administrator password is whatever `--admin-password` was set
-to (default `admin`).
-
-### Useful Pilot commands
-
-| Command | Purpose |
-|---|---|
-| `pilot ls` | List benches, status and admin URL |
-| `pilot -b development-bench start` | Start all processes |
-| `pilot -b development-bench stop` | Stop all processes |
-| `pilot -b development-bench get-app <repo>` | Clone and install an app |
-| `pilot -b development-bench install-app <app> --site <site>` | Install an app on a site |
-| `pilot -b development-bench new-site <site>` | Create a site |
-| `pilot -b development-bench frappe --site <site> <cmd>` | Run any frappe CLI command |
-
-## Running Bench Commands
-
-Classic `bench` commands still work. Change into the bench directory first:
-
-    cd development-bench
-    bench --site cohenix.localhost migrate
-    bench --site cohenix.localhost console
-    bench build
-
-`migrate`, `build`, `console`, `execute`, `install-app`, `backup` and
-`set-config` all behave normally.
-
-**Do not run `bench start` here.** Pilot writes no `Procfile` and runs its own
-process set — use `pilot -b development-bench start` instead.
-
-If a bench command reports `WARN: Command not being executed in bench directory`,
-the `config/pids` directory is missing. frappe/bench requires it; Pilot keeps its
-pid files elsewhere. The installer creates it, and it is safe to recreate:
-
-    mkdir -p development-bench/config/pids
-
-Pilot's passthrough runs the same frappe commands from any directory, without the
-`cd`:
-
-    pilot -b development-bench frappe --site cohenix.localhost migrate
-
-### Switch Between Containers
-- To switch between containers navigate to the bottom left corner and select the container icon
-
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_09.png)
-
-- Close the current remote connection if you are still in a docker container.
-
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_10.png)
-
-- Navigate to the Explorer sidebar, you will need to delete the folder "cohenix-bench" folder before recreating the container to avoid any conflicts.
-
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_11.png)
-
-- Navigate to your VS Code Terminal, make sure you are in the "cohenix-devcontainers" folder.
-
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_12.png)
-
-- Check your current branch and then switch to your intended branch or create a new branch
-  - check your current branch
-
-        git branch
-
-      ![COHENIX_DEVCONTAINERS](images/devcontainer_13.png)
-
-  - switch to your intended branch
-
-      ![COHENIX_DEVCONTAINERS](images/devcontainer_14.png)
-
-  - or Create a new branch
-
-      ![COHENIX_DEVCONTAINERS](images/devcontainer_15.png)
-
-- Navigate to the bottom left corner and select the container icon
-
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_09.png)
-
-- Select reopen container
-
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_16.png)
-
-- The container wil re-open. Your VS Code frame change to blue indicating the you are in the containers.
-
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_17.png)
-
-- The Container is still referencing the previous build so you will need to re-build the container.
-- Navigate to the bottom left corner and select the container icon
-
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_09.png)
-
-- Select rebuild Container container
-
-    ![COHENIX_DEVCONTAINERS](images/devcontainer_18.png)
-
-- Wait until the container is build, your container environment should be ready.
-
-## Git Commands
-
-### Setting up a Repository:
-- Initializes a new Git repository in the current directory.
-
-        git init
-
-- Creates a local copy of a remote repository.
-
-        git clone <repository_url>
-
-- Sets your global username for Git commits.
-
-        git config --global user.name "Your Name"
-
-- Sets your global email for Git commits.
-
-        git config --global user.email "your_email@example.com"
-
-### Making and Saving Changes:
-- Shows the status of your working directory and staged files. 
-
-        git status
-
-- Adds a specific file to the staging area. 
-
-        git add <file_path>
-
-- Adds all changes in the current directory to the staging area.
-
-        git add .
-
-- Records the staged changes to the repository with a descriptive message.
-
-        git commit -m "Commit message"
-
-### Branching and Merging:
-- Lists all local branches.
-
-        git branch
-
-- Temporarily saves modified tracked files, allowing you to switch contexts and then reapply them later. 
-
-        git stash
-
-- Creates a new branch.
-
-        git branch <branch_name>
-
-- Switches to a different branch.
-
-        git checkout <branch_name>
-
-- Creates a new branch and switches to it. 
-
-        git checkout -b <new_branch_name>
-
-- Merges the specified branch into the current branch.
-
-        git merge <branch_name>
-
-
-
-### Working with Remote Repositories:
-- Uploads local commits to the remote repository.
-
-        git push
-
-- Fetches and merges changes from the remote repository.
-
-        git pull
+| Pilot admin | http://localhost:8002 |
+| Mailpit (profile `mail`) | http://localhost:8025 |
+| Site Administrator | `admin` / `ADMIN_PASSWORD` |
+| MariaDB root | `123` / `DB_ROOT_PASSWORD` |
+
+These are development credentials. Do not use them in production. SSH keys
+are not mounted by default; use GitHub credential forwarding.
+
+## Architecture notes
+
+- Benches live at `/home/frappe/pilot/benches/<name>` on a Docker volume.
+  `/workspace/development-bench` is a symlink so app code stays editable.
+- Source for **this** repository is the `/workspace` bind mount.
+- uv, Yarn, and npm caches are named volumes and survive container rebuilds.
+- MariaDB data is a named volume and survives container replacement.
+- Sites use `.localhost` names so Host routing works without `/etc/hosts`.
+
+See [docs/MIGRATION.md](docs/MIGRATION.md) if you are coming from the previous
+installer-based container, and [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md)
+for the redesign notes and Pilot limitations.
