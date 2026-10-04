@@ -81,6 +81,7 @@ services:
       NODE_VERSION: ${NODE_VERSION:-24.12.0}
       PILOT_DIR: /home/frappe/pilot
       COHENIX_WORKSPACE: /workspace
+      PYTHONPATH: /workspace
       COHENIX_PROFILE: ${COHENIX_PROFILE:-hr}
       COHENIX_IMAGE_REF: ${COHENIX_DEV_IMAGE:-ghcr.io/epiusecx/cohenix-frappe-dev:v16}
       UV_CACHE_DIR: /home/frappe/.cache/uv

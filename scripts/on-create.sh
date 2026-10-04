@@ -9,4 +9,9 @@ sudo -n chown -R frappe:frappe \
 	/home/frappe/.npm \
 	2>/dev/null || true
 
+# GHA and some cloud agents mount /workspace as another uid.
+if [ -d /workspace ] && [ ! -w /workspace ]; then
+	sudo -n chown -R frappe:frappe /workspace
+fi
+
 mkdir -p /home/frappe/pilot /home/frappe/.cache/uv /home/frappe/.cache/yarn /home/frappe/.npm

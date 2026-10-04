@@ -42,7 +42,8 @@ done
 
 log "==> Installing CLI and provisioning ($PROFILE)"
 START=$(date +%s)
-exec_frappe "sudo chown -R frappe:frappe /home/frappe/pilot /home/frappe/.cache /home/frappe/.npm || true"
+# GHA bind-mounts the checkout as the runner uid; the image user is uid 1000.
+exec_frappe "sudo chown -R frappe:frappe /workspace /home/frappe/pilot /home/frappe/.cache /home/frappe/.npm"
 exec_frappe 'uv pip install --python "$VIRTUAL_ENV/bin/python" -e /workspace'
 exec_frappe "devctl profile use $PROFILE"
 exec_frappe "devctl sync --extra-sites $SECOND_SITE"
