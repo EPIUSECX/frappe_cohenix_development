@@ -11,10 +11,9 @@ MariaDB 11.8.
    mount. They now live on the `cohenix-pilot` Docker volume, still linked
    from `/workspace/development-bench`.
 2. Rebuild the Dev Container (not just restart). The image is no longer
-   compiled on your laptop from `resources/Dockerfile`.
-3. Run `devctl sync`. It is safe if a previous `python installer.py` run
-   finished. It resumes if that run died halfway.
-4. Run `devctl doctor`.
+   compiled on your laptop from `resources/Dockerfile`. **Reopen in
+   Container** then runs `devctl sync`, `devctl start`, and `devctl doctor`
+   for you. You do not need to type them unless you skipped autosync.
 
 You can keep using `python installer.py`; it calls `devctl sync`.
 

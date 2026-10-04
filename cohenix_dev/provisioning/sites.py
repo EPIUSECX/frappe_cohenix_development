@@ -77,8 +77,8 @@ def report_next_steps(settings: Settings) -> None:
     config = bench_config.read(bench_root(settings))
     sites = settings.site_names()
     cprint("\nBench ready.", level=2)
-    cprint(f"  start:    devctl start", level=2)
-    cprint("            (the Dev Container postStartCommand does this for you)", level=3)
+    cprint("  start:    automatic on Dev Container start (`devctl start`)", level=2)
+    cprint("            Compose/CI: run `devctl start` yourself", level=3)
     cprint(f"  default:  http://localhost:{config.http_port}  ({settings.site_name})", level=2)
     for site in sites:
         cprint(f"  site:     http://{site}:{config.http_port}/app", level=2)

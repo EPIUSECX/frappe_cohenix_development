@@ -36,6 +36,11 @@ small and v16-only.
 - Bind mount is only `/workspace` (this repository).
 - Frappe HTTP/realtime ports are Dev Container `forwardPorts` with
   `portsAttributes`. MariaDB and Redis are not published on the host.
+- **Reopen in Container** auto-runs `devctl sync` (postCreate + postStart),
+  `devctl start`, and `devctl doctor`. The editor `waitFor`s `postStartCommand`
+  so the site is up when the window connects. Opt out with
+  `COHENIX_SKIP_AUTOSYNC=1` / `COHENIX_SKIP_DOCTOR=1`. Compose `up` does not
+  run those hooks; CI and compose-only agents still call `devctl` themselves.
 
 ### Layer 3 — `devctl`
 
@@ -201,7 +206,8 @@ The design target is:
 
 No prompts. Pilot's own `[1/12]` init output is left intact and nested
 under the Cohenix stage. Compose forwards `GITHUB_ACTIONS` and `CI` into
-the Frappe service so CI logs group the same way.
+the Frappe service so CI logs group the same way. The same banners appear
+in the VS Code / Cursor Dev Container log while postCreate/postStart run.
 
 ## Recommended next steps
 

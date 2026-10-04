@@ -128,6 +128,7 @@
   "onCreateCommand": "/workspace/scripts/on-create.sh",
   "postCreateCommand": "/workspace/scripts/post-create.sh",
   "postStartCommand": "/workspace/scripts/start-dev.sh",
+  "waitFor": "postStartCommand",
   "containerEnv": {
     "PILOT_DIR": "/home/frappe/pilot",
     "COHENIX_WORKSPACE": "/workspace"

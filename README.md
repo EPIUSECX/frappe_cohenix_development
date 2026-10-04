@@ -20,18 +20,21 @@ cd frappe_cohenix_development
 
 Open the folder in VS Code or Cursor and choose **Reopen in Container**.
 
-When the container is ready:
+Wait until the Dev Container finishes **postStart** (the editor waits for it).
+That automatically runs:
 
-```bash
-devctl sync
-devctl doctor
-```
+1. `devctl sync` — first create is about five minutes for ERPNext + HR; later
+   reopens are **0s** when the fingerprint already matches
+2. `devctl start` — web, workers, Socket.IO, Redis, scheduler
+3. `devctl doctor` — prints healthy (or how to fix it)
 
-The default site is [http://cohenix.localhost:8000/app](http://cohenix.localhost:8000/app).
+You do **not** type those commands. The default site is then
+[http://cohenix.localhost:8000/app](http://cohenix.localhost:8000/app).
 Administrator password: `admin`.
 
-That is the whole happy path. `devctl` talks to Pilot, Bench, MariaDB, and
-Redis for you.
+To skip automatic provision (a blank bench, or you want to drive `devctl`
+yourself), set `COHENIX_SKIP_AUTOSYNC=1` in `.devcontainer/.env`.
+`COHENIX_SKIP_DOCTOR=1` skips the health check only.
 
 ## Performance
 
@@ -75,11 +78,12 @@ spinner that fights Pilot's output, and no TTY requirement.
 
 ```bash
 devcontainer up --workspace-folder .
-devcontainer exec --workspace-folder . devctl sync
-devcontainer exec --workspace-folder . devctl verify
+# postCreate sync + postStart start/doctor run automatically
+devcontainer exec --workspace-folder . devctl doctor
 ```
 
-Or with Compose directly:
+Or with Compose directly (Compose does **not** run Dev Container lifecycle
+hooks, so you still provision by hand):
 
 ```bash
 docker compose -f .devcontainer/docker-compose.yml up -d --build
