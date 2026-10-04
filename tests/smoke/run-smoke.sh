@@ -40,11 +40,14 @@ while [ "$i" -lt 60 ]; do
 	sleep 2
 done
 
-log "==> Installing CLI and provisioning ($PROFILE)"
+log "==> Preparing writable paths and provisioning ($PROFILE)"
 START=$(date +%s)
-# GHA bind-mounts the checkout as the runner uid; the image user is uid 1000.
-exec_frappe "sudo chown -R frappe:frappe /workspace /home/frappe/pilot /home/frappe/.cache /home/frappe/.npm"
-exec_frappe 'uv pip install --python "$VIRTUAL_ENV/bin/python" -e /workspace'
+# Named volumes start as root. Only chown the workspace directory inode and
+# `.cohenix/` — a recursive chown of /workspace makes the GitHub runner unable
+# to write smoke metrics back into the checkout.
+exec_frappe "sudo chown frappe:frappe /workspace"
+exec_frappe "sudo mkdir -p /workspace/.cohenix && sudo chown -R frappe:frappe /workspace/.cohenix /home/frappe/pilot /home/frappe/.cache /home/frappe/.npm"
+# Live CLI comes from PYTHONPATH=/workspace (compose) plus the image install.
 exec_frappe "devctl profile use $PROFILE"
 exec_frappe "devctl sync --extra-sites $SECOND_SITE"
 SYNC_END=$(date +%s)
@@ -52,7 +55,7 @@ FRESH_SECONDS=$((SYNC_END - START))
 log "Fresh provisioning: ${FRESH_SECONDS}s"
 
 log "==> Starting processes"
-exec_frappe "devctl start" || true
+exec_frappe "devctl start"
 sleep 8
 
 log "==> HTTP ping"
@@ -70,12 +73,12 @@ print(urllib.request.urlopen(req, timeout=20).read().decode())
 PY"
 
 log "==> doctor / verify"
-exec_frappe "devctl verify"
-exec_frappe "devctl doctor" || true
+exec_frappe "devctl verify --site-name $SITE"
+exec_frappe "devctl doctor --site-name $SITE"
 
 log "==> Repeat sync (idempotency)"
 REPEAT_START=$(date +%s)
-exec_frappe "devctl sync"
+exec_frappe "devctl sync --extra-sites $SECOND_SITE"
 REPEAT_END=$(date +%s)
 REPEAT_SECONDS=$((REPEAT_END - REPEAT_START))
 log "Repeat provisioning: ${REPEAT_SECONDS}s"
@@ -86,7 +89,7 @@ fi
 log "==> Restart container and confirm persistence"
 compose restart frappe
 sleep 5
-exec_frappe "devctl start" || true
+exec_frappe "devctl start"
 sleep 8
 exec_frappe "test -f /home/frappe/pilot/benches/development-bench/sites/$SITE/site_config.json"
 exec_frappe "python3 - <<'PY'
@@ -98,5 +101,8 @@ PY"
 log "==> Unit smoke tests inside the container"
 exec_frappe "COHENIX_SMOKE=1 python3 -m unittest tests.smoke.test_environment -v"
 
-printf 'FRESH_SECONDS=%s\nREPEAT_SECONDS=%s\n' "$FRESH_SECONDS" "$REPEAT_SECONDS" > "$ROOT/docs/last-smoke-metrics.txt"
+printf 'FRESH_SECONDS=%s\nREPEAT_SECONDS=%s\n' "$FRESH_SECONDS" "$REPEAT_SECONDS" | tee /tmp/last-smoke-metrics.txt >/dev/null
+if ! cp /tmp/last-smoke-metrics.txt "$ROOT/docs/last-smoke-metrics.txt" 2>/dev/null; then
+	log "Could not write docs/last-smoke-metrics.txt (checkout not writable from the runner); kept /tmp/last-smoke-metrics.txt"
+fi
 log "Smoke tests passed. Fresh=${FRESH_SECONDS}s Repeat=${REPEAT_SECONDS}s"
