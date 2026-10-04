@@ -33,7 +33,45 @@ Administrator password: `admin`.
 That is the whole happy path. `devctl` talks to Pilot, Bench, MariaDB, and
 Redis for you.
 
-### Cloud agents and CI
+## Performance
+
+The main win is **not compiling the toolchain on a developer machine**.
+
+| What | Previous bootstrap | Cohenix v16 platform |
+|---|---|---|
+| Python | pyenv compiled 3.10 **and** 3.14 on every image rebuild | uv installs prebuilt CPython **3.14.2** (~1s at image build) |
+| Node | nvm installed 16 **and** 24 | Official **24.12.0** tarball, SHA256-checked |
+| Image rebuild | Local compile of two Pythons and two Nodes | Pull `ghcr.io/epiusecx/cohenix-frappe-dev:v16` (`pull_policy: missing`) |
+| Image size | Two runtimes per language | **1.47 GiB** (measured amd64, 1,539,801,676 bytes) |
+| Fresh `devctl sync` (hr profile, two sites, ERPNext + HRMS) | After the image compile, then installer.py | **328s** in GitHub Actions image smoke (`241c9fb`) |
+| Repeat `devctl sync` with no config change | Re-ran installer work | **0s** (`nothing to do`, fingerprint match) |
+| Container restart | Could reinstall | Named volumes persist; `devctl start` only |
+
+CI writes `docs/last-smoke-metrics.txt` (`FRESH_SECONDS` / `REPEAT_SECONDS`) on
+each image workflow run. Those two numbers are measured. The old pyenv compile
+was not re-timed in this repository; a typical CPython pyenv build is several
+minutes **per version**, and the previous Dockerfile built two Pythons and two
+Nodes. That cost is gone from the daily loop.
+
+## Watching progress
+
+`devctl sync` and `devctl start` are still non-interactive (CI and coding
+agents never get a prompt). They now **sell the current stage** on the terminal:
+
+1. A header with profile, Python, Node, Pilot, bench, sites, and apps.
+2. Numbered banners `>>> [3/10] Initialize bench` around each step, including
+   Pilot's own `[1/12]` bars.
+3. A heartbeat every 15 seconds while a stage is still running, so a quiet
+   `pilot init` or site create is not a black box.
+4. `<<< [3/10] Initialize bench  done (56s)` when the step finishes, or
+   `skipped` when the fingerprint says it is unnecessary.
+5. A timing table at the end.
+
+On GitHub Actions the same stages become collapsible `::group::` log sections
+(the Compose service receives `GITHUB_ACTIONS`). There is no `input()`, no
+spinner that fights Pilot's output, and no TTY requirement.
+
+## Cloud agents and CI
 
 ```bash
 devcontainer up --workspace-folder .

@@ -12,7 +12,14 @@ from pathlib import Path
 from cohenix_dev.config import Settings
 from cohenix_dev.errors import CohenixError
 from cohenix_dev.output import cprint
-from cohenix_dev.runtime.pilot import bench_root, bench_subprocess_env, import_pilot_config, pilot_bin, run_pilot
+from cohenix_dev.progress import START_STAGES, StageReporter, environment_rows
+from cohenix_dev.runtime.pilot import (
+    bench_root,
+    bench_subprocess_env,
+    import_pilot_config,
+    pilot_bin,
+    run_pilot,
+)
 from cohenix_dev.util import port_is_live, python3, which
 
 PID_DIR = Path("/tmp")
@@ -48,10 +55,7 @@ def ensure_scheduler_procfile(settings: Settings) -> None:
         return
     python = bench_root(settings) / "env" / "bin" / "python"
     sites = bench_root(settings) / "sites"
-    line = (
-        f"schedule: bash -lc 'cd {sites} && {python} "
-        "-m frappe.utils.bench_helper frappe schedule'\n"
-    )
+    line = f"schedule: bash -lc 'cd {sites} && {python} -m frappe.utils.bench_helper frappe schedule'\n"
     path.write_text(text.rstrip() + "\n" + line, encoding="utf-8")
     cprint("Added Frappe scheduler to Pilot Procfile (upstream omits it).", level=3)
 
@@ -168,35 +172,48 @@ def read_pid(settings: Settings) -> int | None:
 
 
 def start_bench(settings: Settings) -> None:
-    ensure_bench_config_files(settings)
+    reporter = StageReporter("devctl start", START_STAGES)
+    reporter.header(environment_rows(settings))
+    try:
+        _start_bench(settings, reporter)
+    except Exception:
+        reporter.summary()
+        raise
+    reporter.summary()
+
+
+def _start_bench(settings: Settings, reporter: StageReporter) -> None:
+    with reporter.stage("Ensure process configuration"):
+        ensure_bench_config_files(settings)
     existing = read_pid(settings)
-    if existing:
-        cprint(f"Pilot bench {settings.bench_name} is already running as PID {existing}.", level=2)
+    with reporter.stage("Start Pilot processes"):
+        if existing:
+            cprint(f"Pilot bench {settings.bench_name} is already running as PID {existing}.", level=2)
+        else:
+            binary = pilot_bin(settings)
+            if not binary.exists():
+                raise CohenixError(f"Pilot is not installed at {binary}; run `devctl sync` first.")
+            log = log_file(settings)
+            with log.open("ab") as handle:
+                process = subprocess.Popen(
+                    [python3(), str(binary), "-b", settings.bench_name, "start"],
+                    cwd=str(binary.parent.parent),
+                    stdout=handle,
+                    stderr=handle,
+                    stdin=subprocess.DEVNULL,
+                    start_new_session=True,
+                    env=bench_subprocess_env(settings),
+                )
+            pid_file(settings).write_text(f"{process.pid}\n", encoding="utf-8")
+            time.sleep(2)
+            if process.poll() is not None:
+                tail = ""
+                if log.exists():
+                    tail = "\n".join(log.read_text(errors="ignore").splitlines()[-40:])
+                raise CohenixError(f"Pilot failed to start. Recent output from {log}:\n{tail}")
+            cprint(f"Pilot bench {settings.bench_name} started as PID {process.pid} (log: {log}).", level=2)
+    with reporter.stage("Start scheduler"):
         ensure_scheduler_running(settings)
-        return
-    binary = pilot_bin(settings)
-    if not binary.exists():
-        raise CohenixError(f"Pilot is not installed at {binary}; run `devctl sync` first.")
-    log = log_file(settings)
-    with log.open("ab") as handle:
-        process = subprocess.Popen(
-            [python3(), str(binary), "-b", settings.bench_name, "start"],
-            cwd=str(binary.parent.parent),
-            stdout=handle,
-            stderr=handle,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-            env=bench_subprocess_env(settings),
-        )
-    pid_file(settings).write_text(f"{process.pid}\n", encoding="utf-8")
-    time.sleep(2)
-    if process.poll() is not None:
-        tail = ""
-        if log.exists():
-            tail = "\n".join(log.read_text(errors="ignore").splitlines()[-40:])
-        raise CohenixError(f"Pilot failed to start. Recent output from {log}:\n{tail}")
-    cprint(f"Pilot bench {settings.bench_name} started as PID {process.pid} (log: {log}).", level=2)
-    ensure_scheduler_running(settings)
 
 
 def stop_bench(settings: Settings) -> None:

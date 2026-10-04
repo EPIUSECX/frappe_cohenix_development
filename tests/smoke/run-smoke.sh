@@ -19,7 +19,10 @@ compose() {
 }
 
 exec_frappe() {
-	compose exec -T frappe bash -lc "$*"
+	compose exec -T \
+		-e "GITHUB_ACTIONS=${GITHUB_ACTIONS:-}" \
+		-e "CI=${CI:-}" \
+		frappe bash -lc "$*"
 }
 
 log "==> Starting the development stack"
