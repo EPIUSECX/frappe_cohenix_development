@@ -54,7 +54,8 @@ ENV PYTHON_VERSION=${PYTHON_VERSION} \
     UV_CACHE_DIR=/home/frappe/.cache/uv \
     YARN_CACHE_FOLDER=/home/frappe/.cache/yarn \
     npm_config_cache=/home/frappe/.npm \
-    PATH=/home/frappe/.local/bin:/usr/local/bin:$PATH \
+    VIRTUAL_ENV=/home/frappe/.local/share/cohenix-python \
+    PATH=/home/frappe/.local/share/cohenix-python/bin:/home/frappe/.local/bin:/usr/local/bin:$PATH \
     BENCH_DEVELOPER=1 \
     SHELL=/bin/bash
 
@@ -158,12 +159,13 @@ RUN mkdir -p /home/frappe/.local/bin \
         /home/frappe/.npm \
         /home/frappe/pilot \
     && uv python install "${PYTHON_VERSION}" \
-    && UV_PY="$(uv python find "${PYTHON_VERSION}" 2>/dev/null || ls "${UV_PYTHON_INSTALL_DIR}"/*/bin/python3 | head -n 1)" \
-    && ln -sf "$UV_PY" /home/frappe/.local/bin/python \
-    && ln -sf "$UV_PY" /home/frappe/.local/bin/python3 \
-    && uv pip install --python "$UV_PY" pip virtualenv \
-    && echo "export PATH=/home/frappe/.local/bin:/usr/local/bin:\$PATH" >> /home/frappe/.bashrc \
-    && echo "export PATH=/home/frappe/.local/bin:/usr/local/bin:\$PATH" >> /home/frappe/.profile \
+    && uv venv "${VIRTUAL_ENV}" --python "${PYTHON_VERSION}" \
+    && ln -sf "${VIRTUAL_ENV}/bin/python" /home/frappe/.local/bin/python \
+    && ln -sf "${VIRTUAL_ENV}/bin/python3" /home/frappe/.local/bin/python3 \
+    && uv pip install --python "${VIRTUAL_ENV}/bin/python" pip virtualenv \
+    && echo "export VIRTUAL_ENV=${VIRTUAL_ENV}" >> /home/frappe/.bashrc \
+    && echo "export PATH=${VIRTUAL_ENV}/bin:/home/frappe/.local/bin:/usr/local/bin:\$PATH" >> /home/frappe/.bashrc \
+    && echo "export PATH=${VIRTUAL_ENV}/bin:/home/frappe/.local/bin:/usr/local/bin:\$PATH" >> /home/frappe/.profile \
     && echo "export BENCH_DEVELOPER=1" >> /home/frappe/.bashrc \
     && echo "export UV_CACHE_DIR=/home/frappe/.cache/uv" >> /home/frappe/.bashrc \
     && echo "export YARN_CACHE_FOLDER=/home/frappe/.cache/yarn" >> /home/frappe/.bashrc \
@@ -183,8 +185,7 @@ RUN NODE_ARCH="$(uname -m)" \
     && yarn --version
 
 RUN git clone "${BENCH_REPO}" --depth 1 -b "${BENCH_REF}" /home/frappe/.bench \
-    && python3 -m pip install --no-cache-dir --user -e /home/frappe/.bench \
-    && python3 -m pip install --no-cache-dir --user "uv==${UV_VERSION}"
+    && uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-cache -e /home/frappe/.bench
 
 USER root
 COPY pyproject.toml /opt/cohenix/pyproject.toml
@@ -197,7 +198,7 @@ RUN mkdir -p /etc/cohenix \
     && chown -R frappe:frappe /etc/cohenix /opt/cohenix
 USER frappe
 
-RUN python3 -m pip install --no-cache-dir --user /opt/cohenix \
+RUN uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-cache /opt/cohenix \
     && python3 -c "import cohenix_dev; print(cohenix_dev.__version__)" \
     && devctl --help >/dev/null
 
