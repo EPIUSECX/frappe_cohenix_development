@@ -1,0 +1,52 @@
+# Cohenix application profiles for Frappe v16.
+# Repository URLs are taken from this repository's installer defaults and
+# from public EPIUSECX/Frappe repositories that exist on GitHub.
+# Do not add an app here unless the repository is known.
+
+schema_version = 1
+default = "hr"
+
+[profiles.frappe]
+description = "Frappe framework only"
+apps = [
+  { name = "frappe", repo = "https://github.com/frappe/frappe", branch = "version-16" },
+]
+
+[profiles.erp]
+description = "Frappe and ERPNext"
+extends = "frappe"
+apps = [
+  { name = "erpnext", repo = "https://github.com/frappe/erpnext", branch = "version-16" },
+]
+
+[profiles.hr]
+description = "Standard Cohenix v16 stack: Frappe, ERPNext, and Frappe HR"
+extends = "erp"
+apps = [
+  { name = "hrms", repo = "https://github.com/frappe/hrms", branch = "version-16" },
+]
+
+[profiles.localisation]
+description = "HR stack plus documented South African localisation apps"
+extends = "hr"
+apps = [
+  { name = "za_local_core", repo = "https://github.com/EPIUSECX/za_local_core", branch = "main" },
+  { name = "za_local", repo = "https://github.com/EPIUSECX/cohenix_local_za", branch = "version-16" },
+  { name = "za_local_payroll", repo = "https://github.com/EPIUSECX/za_local_payroll", branch = "main" },
+]
+
+[profiles.integrations]
+description = "ERP stack plus v16 payments and ecommerce integrations"
+extends = "erp"
+apps = [
+  { name = "payments", repo = "https://github.com/frappe/payments", branch = "version-16" },
+  { name = "ecommerce_integrations", repo = "https://github.com/frappe/ecommerce_integrations", branch = "version-16" },
+]
+
+[profiles.full-cohenix]
+description = "Localisation stack plus v16 integration apps"
+extends = "localisation"
+apps = [
+  { name = "payments", repo = "https://github.com/frappe/payments", branch = "version-16" },
+  { name = "ecommerce_integrations", repo = "https://github.com/frappe/ecommerce_integrations", branch = "version-16" },
+]

@@ -1,0 +1,109 @@
+# Pilot compatibility audit against the pinned release and the canary release.
+# Workarounds stay until a test proves the replacement is safe.
+
+schema_version = 1
+pinned = "v0.0.23-pre-alpha"
+audited_canary = "v0.0.55-pre-alpha"
+
+[[workarounds]]
+id = "cli-packaging"
+still_required_on_pinned = true
+still_required_on_canary = false
+reason = """
+Pinned Pilot CLI imports top-level packaging during multi-app site install.
+v0.0.55 vendors packaging as pilot._vendor.packaging. Keep the pip fallback
+when import packaging fails so both releases work.
+"""
+
+[[workarounds]]
+id = "cli-pymysql"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = """
+Pilot CLI still imports pymysql for MariaDB probes. The admin extra installs
+it into .admin-venv, not the interpreter that runs bin/pilot.
+"""
+
+[[workarounds]]
+id = "admin-venv"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "Admin UI still uses an isolated venv created from the admin extra."
+
+[[workarounds]]
+id = "redis-server"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "Pilot still has no external-Redis setting and runs its own redis-server."
+
+[[workarounds]]
+id = "incomplete-venv-recovery"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "uv venv refuses to reuse a directory that exists without bin/python."
+
+[[workarounds]]
+id = "bench-toml-not-initialized"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "pilot new writes bench.toml before init finishes; require apps/frappe too."
+
+[[workarounds]]
+id = "classic-bench-pids"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "frappe/bench is_bench_directory still requires config/pids."
+
+[[workarounds]]
+id = "shallow-clone-history"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "Release tarballs still clone apps with --depth 1 unless VERSION is 'dev'."
+
+[[workarounds]]
+id = "port-offset-publish"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "Pilot admin default is 7000; Dev Containers forward 8002 instead."
+
+[[workarounds]]
+id = "db-login-scope"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = """
+SiteCommands.create still does not pass --mariadb-user-host-login-scope.
+Compose container IPs change on recreate, so the grant is repaired to '%'.
+"""
+
+[[workarounds]]
+id = "temporary-redis-for-sites"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "new-site needs Redis, but Pilot only starts Redis inside `pilot start`."
+
+[[workarounds]]
+id = "assets-json"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = """
+build_missing_assets still keys off sites/assets/<app> (a symlink created by
+linking), not assets.json, so a linked bench can serve a broken desk.
+"""
+
+[[workarounds]]
+id = "default-site-host"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "Pilot has no new-site --set-default; localhost would 404 without serve_default_site."
+
+[[workarounds]]
+id = "bench-start-shim"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "Pilot writes no Procfile; `bench start` must delegate to Pilot."
+
+[[workarounds]]
+id = "skip-install-sh"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = "install.sh still wants to install MariaDB/nginx/supervisor on the host."

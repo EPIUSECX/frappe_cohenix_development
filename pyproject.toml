@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cohenix-dev"
+version = "1.0.0"
+description = "Cohenix Frappe v16 development CLI (devctl)"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Cohenix" }]
+dependencies = []
+
+[project.scripts]
+devctl = "cohenix_dev.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+include = ["cohenix_dev*"]
+
+[tool.setuptools.package-data]
+cohenix_dev = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "smoke: full environment smoke tests (require a running Dev Container)",
+  "compat: Pilot workaround compatibility tests",
+]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
