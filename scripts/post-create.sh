@@ -4,7 +4,8 @@ set -eu
 
 /workspace/scripts/on-create.sh
 
-python3 -m pip install --user --disable-pip-version-check -e /workspace
+python3 -m pip install --user --disable-pip-version-check -e /workspace 2>/dev/null \
+	|| uv pip install --python "${VIRTUAL_ENV:-python3}" -e /workspace
 hash -r 2>/dev/null || true
 
 if command -v pre-commit >/dev/null 2>&1; then
