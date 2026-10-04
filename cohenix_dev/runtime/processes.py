@@ -26,12 +26,70 @@ def log_file(settings: Settings) -> Path:
     return PID_DIR / f"pilot-{settings.bench_name}.log"
 
 
+def scheduler_pid_file(settings: Settings) -> Path:
+    return PID_DIR / f"scheduler-{settings.bench_name}.pid"
+
+
 def ensure_bench_config_files(settings: Settings) -> None:
     root = bench_root(settings)
-    if all((root / "config" / name).exists() for name in ("redis_cache.conf", "redis_queue.conf")):
+    if not all((root / "config" / name).exists() for name in ("redis_cache.conf", "redis_queue.conf")):
+        cprint("Bench config/ is incomplete, regenerating ...", level=2)
+        run_pilot(settings, "--bench", settings.bench_name, "setup", "config")
+    ensure_scheduler_procfile(settings)
+
+
+def ensure_scheduler_procfile(settings: Settings) -> None:
+    """Pilot's generated Procfile omits `frappe schedule`. Add it when missing."""
+    path = bench_root(settings) / "config" / "Procfile"
+    if not path.is_file():
         return
-    cprint("Bench config/ is incomplete, regenerating ...", level=2)
-    run_pilot(settings, "--bench", settings.bench_name, "setup", "config")
+    text = path.read_text(encoding="utf-8")
+    if any(line.startswith("schedule:") for line in text.splitlines()):
+        return
+    python = bench_root(settings) / "env" / "bin" / "python"
+    sites = bench_root(settings) / "sites"
+    line = (
+        f"schedule: bash -lc 'cd {sites} && {python} "
+        "-m frappe.utils.bench_helper frappe schedule'\n"
+    )
+    path.write_text(text.rstrip() + "\n" + line, encoding="utf-8")
+    cprint("Added Frappe scheduler to Pilot Procfile (upstream omits it).", level=3)
+
+
+def scheduler_running() -> bool:
+    for pattern in ("bench_helper frappe schedule", "frappe.utils.scheduler"):
+        result = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True, check=False)
+        if result.returncode == 0 and result.stdout.strip():
+            return True
+    return False
+
+
+def ensure_scheduler_running(settings: Settings) -> None:
+    ensure_scheduler_procfile(settings)
+    if scheduler_running():
+        return
+    root = bench_root(settings)
+    python = root / "env" / "bin" / "python"
+    if not python.is_file():
+        return
+    logs = root / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    with (logs / "scheduler.log").open("ab") as handle:
+        process = subprocess.Popen(
+            [str(python), "-m", "frappe.utils.bench_helper", "frappe", "schedule"],
+            cwd=str(root / "sites"),
+            stdout=handle,
+            stderr=handle,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            env=bench_subprocess_env(settings),
+        )
+    scheduler_pid_file(settings).write_text(f"{process.pid}\n", encoding="utf-8")
+    time.sleep(0.5)
+    if process.poll() is not None:
+        tail = (logs / "scheduler.log").read_text(errors="ignore")[-500:]
+        raise CohenixError(f"Frappe scheduler exited immediately:\n{tail}")
+    cprint(f"Started Frappe scheduler as PID {process.pid} (Pilot does not start it).", level=3)
 
 
 def wait_for_port(process: subprocess.Popen[bytes], port: int, label: str, timeout: float = 20.0) -> None:
@@ -110,9 +168,11 @@ def read_pid(settings: Settings) -> int | None:
 
 
 def start_bench(settings: Settings) -> None:
+    ensure_bench_config_files(settings)
     existing = read_pid(settings)
     if existing:
         cprint(f"Pilot bench {settings.bench_name} is already running as PID {existing}.", level=2)
+        ensure_scheduler_running(settings)
         return
     binary = pilot_bin(settings)
     if not binary.exists():
@@ -136,6 +196,7 @@ def start_bench(settings: Settings) -> None:
             tail = "\n".join(log.read_text(errors="ignore").splitlines()[-40:])
         raise CohenixError(f"Pilot failed to start. Recent output from {log}:\n{tail}")
     cprint(f"Pilot bench {settings.bench_name} started as PID {process.pid} (log: {log}).", level=2)
+    ensure_scheduler_running(settings)
 
 
 def stop_bench(settings: Settings) -> None:
@@ -148,6 +209,13 @@ def stop_bench(settings: Settings) -> None:
                 os.kill(pid, 15)
             except OSError:
                 pass
+    scheduler = scheduler_pid_file(settings)
+    if scheduler.is_file():
+        try:
+            os.kill(int(scheduler.read_text().strip()), 15)
+        except (OSError, ValueError):
+            pass
+        scheduler.unlink(missing_ok=True)
     if pid_file(settings).exists():
         pid_file(settings).unlink()
     cprint(f"Pilot bench {settings.bench_name} stopped.", level=2)

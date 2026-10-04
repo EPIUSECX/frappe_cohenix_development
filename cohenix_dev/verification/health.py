@@ -45,8 +45,8 @@ def inspect_processes(settings: Settings) -> ProcessHealth:
     health.web = port_is_live(http_port)
     health.socketio = port_is_live(socketio_port)
     health.redis = port_is_live(cache_port) and port_is_live(queue_port)
-    health.workers = _pgrep("frappe.utils.background_jobs") or _pgrep("worker")
-    health.scheduler = _pgrep("frappe.utils.scheduler") or _pgrep("schedule")
+    health.workers = _pgrep("frappe.utils.background_jobs") or _pgrep("bench_helper frappe worker")
+    health.scheduler = _pgrep("frappe.utils.scheduler") or _pgrep("bench_helper frappe schedule")
     if not health.workers and read_pid(settings):
         # Pilot groups workers under the start process; treat a live PID + web as workers up.
         health.workers = health.web

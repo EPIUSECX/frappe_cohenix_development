@@ -178,7 +178,7 @@ def run_checks(settings: Settings) -> list[Check]:
                 "Scheduler",
                 health.scheduler,
                 "running" if health.scheduler else "not detected",
-                "Scheduler starts with the Pilot process set.",
+                "Scheduler starts with `devctl start`. Pilot's Procfile omits it; Cohenix adds the process.",
             )
         )
         checks.append(

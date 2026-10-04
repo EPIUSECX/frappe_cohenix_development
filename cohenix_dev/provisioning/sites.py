@@ -47,18 +47,19 @@ def provision_site(settings: Settings, site_name: str, app_names: list[str]) -> 
             *app_names,
         )
     repair_db_login_scope(settings, site_name)
-    cprint(f"Set developer_mode on {site_name}", level=3)
-    run_pilot(
-        settings,
-        "--bench",
-        settings.bench_name,
-        "frappe",
-        "--site",
-        site_name,
-        "set-config",
-        "developer_mode",
-        "1",
-    )
+    for key, value in (("developer_mode", "1"), ("allow_tests", "1")):
+        cprint(f"Set {key} on {site_name}", level=3)
+        run_pilot(
+            settings,
+            "--bench",
+            settings.bench_name,
+            "frappe",
+            "--site",
+            site_name,
+            "set-config",
+            key,
+            value,
+        )
 
 
 def create_sites(settings: Settings) -> None:

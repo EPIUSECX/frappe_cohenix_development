@@ -17,6 +17,9 @@ class PilotCompatManifestTests(unittest.TestCase):
             "shallow-clone-history",
             "incomplete-venv-recovery",
             "bench-start-shim",
+            "procfile-omits-scheduler",
+            "migrate-needs-redis",
+            "venv-python-symlink",
         }
         self.assertTrue(required.issubset(ids))
         still = [item for item in data["workarounds"] if item["still_required_on_pinned"]]

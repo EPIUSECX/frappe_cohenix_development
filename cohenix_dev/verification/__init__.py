@@ -1,3 +1,1 @@
-from cohenix_dev.verification.runtime import verify_installation
-
-__all__ = ["verify_installation"]
+"""Verification package. Import submodules directly to avoid circular imports."""

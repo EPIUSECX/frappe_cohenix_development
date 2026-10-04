@@ -69,7 +69,7 @@ were not invented here.
 
 | Limitation | Status |
 |---|---|
-| CLI undeclared `packaging` dependency | Fixed in 0.0.55 via `pilot._vendor.packaging`; pip fallback kept for the pin |
+| CLI undeclared `packaging` dependency | Fixed in 0.0.55 via `pilot._vendor.packaging`; also hidden if `~/.local/bin/python3` is a venv symlink. `devctl` now execs `VIRTUAL_ENV/bin/python3` |
 | CLI undeclared `pymysql` | Still required on pin and canary |
 | No external Redis | Still required; image includes redis-server |
 | `new-site` omits `--mariadb-user-host-login-scope` | Still repaired after create |
@@ -79,6 +79,8 @@ were not invented here.
 | `config/pids` missing for classic Bench | Still created |
 | Admin UI default port 7000 | Still remapped to 8002 |
 | Temporary Redis needed for `new-site` | Still started around site create |
+| `frappe migrate` requires Redis | Extra migrate is skipped after create/install, otherwise Redis is started |
+| Generated Procfile omits `frappe schedule` | `devctl start` adds it and starts the process |
 | `VERSION=dev` would get full history; we will not lie about the version | Deepen workaround kept |
 
 Do not set `PILOT_VERSION=latest` on the normal path.
@@ -109,6 +111,36 @@ SQL identifier guard, installer wrapper, Pilot workaround manifest.
 - `devctl doctor` / `devctl verify`
 
 Publishing a GHCR image requires this job to pass.
+
+Local verification on 2026-10-04 (amd64 cloud agent, host-network workaround
+because nested-docker bridge had no outbound HTTPS):
+
+- Unit tests: **27 passed**
+- Image size: **1.47 GiB** (1,539,801,676 bytes), Python 3.14.2 / Node v24.12.0
+- MariaDB **11.8.9**
+- Sites `cohenix.localhost` and `second.localhost` with frappe + erpnext + hrms
+- `assets.json` present
+- HTTP `frappe.ping` → `pong` on both Host headers
+- Socket.IO on 9000, Redis on 11000/13000, workers and scheduler running
+- `devctl doctor` → Environment healthy
+- Container restart: site files and MariaDB databases survived; `devctl start`
+  restored HTTP pong
+- Repeat `devctl sync --extra-sites second.localhost` with no config changes:
+  **0 seconds** (`nothing to do`)
+- Fresh path: Pilot install + bench init **56s**; Frappe site create then
+  ERPNext/HRMS install on two sites completed on the recovery run (interrupted
+  once by the packaging/symlink bug, then resumed without rebuilding the bench)
+- `pilot frappe execute frappe.ping` → `pong`
+- `run-tests` is enabled (`allow_tests=1`) and Frappe test extras (hypothesis,
+  responses, freezegun, Faker) are installed into the bench env. A full
+  `run-tests` on the default HR site currently fails while generating records
+  for ERPNext's `Payment Gateway` DocType (the `payments` app is not in the
+  `hr` profile). Use `devctl profile use frappe` for framework-only tests, or
+  add `payments` via the integrations profile.
+
+Nested Docker in this VM cannot reach GitHub/PyPI on the default bridge
+(`iptables=false` + vfs). GitHub Actions remains the official networked smoke
+path. Compose itself is unchanged (services share a user-defined network).
 
 ### Image size and provisioning times
 

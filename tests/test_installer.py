@@ -201,6 +201,22 @@ class InterpreterTests(unittest.TestCase):
                 self.assertEqual(parts[0], str(Path(directory) / "bin"))
                 self.assertIn(str(Path.home() / ".local" / "bin"), parts)
 
+    def test_scheduler_procfile_line_is_added_once(self):
+        from cohenix_dev.runtime.processes import ensure_scheduler_procfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "benches" / "development-bench"
+            (root / "config").mkdir(parents=True)
+            (root / "env" / "bin").mkdir(parents=True)
+            (root / "env" / "bin" / "python").write_text("#!/bin/sh\n")
+            (root / "config" / "Procfile").write_text("web: frappe serve\n")
+            settings = SimpleNamespace(bench_name="development-bench", pilot_dir=directory)
+            with mock.patch("cohenix_dev.runtime.processes.bench_root", return_value=root):
+                ensure_scheduler_procfile(settings)
+                ensure_scheduler_procfile(settings)
+            text = (root / "config" / "Procfile").read_text()
+            self.assertEqual(text.count("schedule:"), 1)
+
     def test_bench_start_shim_wraps_venv_console_script(self):
         from cohenix_dev.config import BENCH_SHIM_MARKER
         from cohenix_dev.runtime.pilot import ensure_bench_start_shim
@@ -252,7 +268,12 @@ class SqlIdentifierTests(unittest.TestCase):
         self.assertFalse(SAFE_SQL_IDENTIFIER.match("foo`; drop table"))
 
 
-class CompatWrapperTests(unittest.TestCase):
+class ImportTests(unittest.TestCase):
+    def test_doctor_imports_without_circular_import(self):
+        from cohenix_dev.doctor import render_doctor, run_checks
+
+        self.assertTrue(callable(run_checks))
+        self.assertTrue(callable(render_doctor))
     def test_installer_parser_still_exposes_verify_only(self):
         from cohenix_dev.compat import get_args_parser
 

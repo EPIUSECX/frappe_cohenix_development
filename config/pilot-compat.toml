@@ -107,6 +107,34 @@ still_required_on_canary = true
 reason = "Pilot writes no Procfile; `bench start` must delegate to Pilot."
 
 [[workarounds]]
+id = "procfile-omits-scheduler"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = """
+Pilot's generated Procfile has web, socketio, workers, redis, and watch, but
+not `frappe schedule`. devctl start adds the line and starts the process.
+"""
+
+[[workarounds]]
+id = "migrate-needs-redis"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = """
+frappe migrate refuses to run unless redis_cache is up. Site create already
+migrates; extra migrate after create_sites must keep Redis running.
+"""
+
+[[workarounds]]
+id = "venv-python-symlink"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = """
+Pilot's shebang is #!/usr/bin/env python3. A symlink of the uv venv python
+into ~/.local/bin makes CPython use that directory as sys.prefix, hiding
+packaging. Invoke Pilot with VIRTUAL_ENV/bin/python3.
+"""
+
+[[workarounds]]
 id = "skip-install-sh"
 still_required_on_pinned = true
 still_required_on_canary = true

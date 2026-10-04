@@ -1,3 +1,1 @@
-from cohenix_dev.provisioning.sync import sync_environment
-
-__all__ = ["sync_environment"]
+"""Provisioning package. Import submodules directly to avoid circular imports."""
