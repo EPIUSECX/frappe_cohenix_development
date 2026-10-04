@@ -179,6 +179,29 @@ class CliTests(unittest.TestCase):
                 confirm_or_abort(settings, ["example"])
 
 
+class InterpreterTests(unittest.TestCase):
+    def test_python3_prefers_virtual_env(self):
+        from cohenix_dev.util import python3 as resolve_python
+
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "bin" / "python3"
+            binary.parent.mkdir()
+            binary.write_text("#!/bin/sh\n")
+            binary.chmod(0o755)
+            with mock.patch.dict(os.environ, {"VIRTUAL_ENV": directory}):
+                self.assertEqual(resolve_python(), str(binary))
+
+    def test_pilot_env_puts_virtualenv_ahead_of_home_local(self):
+        from cohenix_dev.runtime.pilot import bench_subprocess_env
+
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.dict(os.environ, {"VIRTUAL_ENV": directory, "PATH": "/usr/bin"}):
+                env = bench_subprocess_env()
+                parts = env["PATH"].split(os.pathsep)
+                self.assertEqual(parts[0], str(Path(directory) / "bin"))
+                self.assertIn(str(Path.home() / ".local" / "bin"), parts)
+
+
 class ToolchainAgreementTests(unittest.TestCase):
     def test_export_script_matches_toolchain_file(self):
         from pathlib import Path
@@ -198,8 +221,11 @@ class ToolchainAgreementTests(unittest.TestCase):
         self.assertNotIn("PYTHON_VERSION_V14", dockerfile)
         self.assertNotIn("NODE_VERSION_14", dockerfile)
         self.assertNotIn("pyenv install", dockerfile)
+        self.assertNotIn('ln -sf "${VIRTUAL_ENV}/bin/python3"', dockerfile)
+        self.assertIn("packaging pymysql", dockerfile)
         compose = (root / ".devcontainer" / "docker-compose.yml").read_text()
         self.assertIn("mariadb:11.8.9", compose)
+        self.assertIn("target: cohenix-v16", compose)
         self.assertNotIn("skip-innodb-read-only-compressed", compose)
         self.assertNotIn("mariadb:10.6", compose)
 

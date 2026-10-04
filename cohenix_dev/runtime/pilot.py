@@ -291,23 +291,29 @@ def ensure_bench_start_shim() -> None:
 
 def bench_subprocess_env(settings: Settings | None = None) -> dict[str, str]:
     env = os.environ.copy()
-    path_parts = [str(Path.home() / ".local" / "bin")]
+    path_parts: list[str] = []
+    venv = env.get("VIRTUAL_ENV")
+    if venv:
+        path_parts.append(str(Path(venv) / "bin"))
+    path_parts.append(str(Path.home() / ".local" / "bin"))
     if settings is not None and settings.node_version:
         nvm_dir = os.environ.get("NVM_DIR", str(Path.home() / ".nvm"))
         node_bin = Path(nvm_dir) / "versions" / "node" / f"v{settings.node_version}" / "bin"
         if node_bin.is_dir():
             path_parts.insert(0, str(node_bin))
-        else:
-            cprint(f"Node {settings.node_version} not found at {node_bin}, using PATH default", level=3)
     env["PATH"] = os.pathsep.join([*path_parts, env.get("PATH", "")])
     env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
     env.setdefault("YARN_CACHE_FOLDER", str(Path.home() / ".cache" / "yarn"))
     env.setdefault("npm_config_cache", str(Path.home() / ".npm"))
+    if venv:
+        env.setdefault("VIRTUAL_ENV", venv)
     return env
 
 
 def run_pilot(settings: Settings, *cli_args: Any, cwd: str | Path | None = None) -> None:
-    command = [str(pilot_bin(settings))]
+    # Invoke with the venv interpreter so Pilot's `#!/usr/bin/env python3`
+    # shebang cannot pick up a broken ~/.local/bin/python3 symlink.
+    command = [python3(), str(pilot_bin(settings))]
     if settings.verbose:
         command.append("--verbose")
     command += [str(a) for a in cli_args]

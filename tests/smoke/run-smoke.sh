@@ -23,7 +23,12 @@ exec_frappe() {
 }
 
 log "==> Starting the development stack"
-compose up -d --build mariadb frappe
+IMAGE_REF="${COHENIX_DEV_IMAGE:-ghcr.io/epiusecx/cohenix-frappe-dev:v16}"
+if docker image inspect "$IMAGE_REF" >/dev/null 2>&1; then
+	compose up -d --no-build mariadb frappe
+else
+	compose up -d --build mariadb frappe
+fi
 
 log "==> Waiting for MariaDB"
 i=0
@@ -38,7 +43,7 @@ done
 log "==> Installing CLI and provisioning ($PROFILE)"
 START=$(date +%s)
 exec_frappe "sudo chown -R frappe:frappe /home/frappe/pilot /home/frappe/.cache /home/frappe/.npm || true"
-exec_frappe "python3 -m pip install --user --disable-pip-version-check -e /workspace"
+exec_frappe 'uv pip install --python "$VIRTUAL_ENV/bin/python" -e /workspace'
 exec_frappe "devctl profile use $PROFILE"
 exec_frappe "devctl sync --extra-sites $SECOND_SITE"
 SYNC_END=$(date +%s)

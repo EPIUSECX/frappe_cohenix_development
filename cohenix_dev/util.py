@@ -68,7 +68,26 @@ def write_text(path: Path, contents: str) -> None:
 
 
 def python3() -> str:
-    return shutil.which("python3") or sys.executable
+    """Return the v16 toolchain interpreter, not a ~/.local/bin symlink.
+
+    Symlinking a uv venv python into ~/.local/bin makes CPython treat
+    ~/.local as sys.prefix, so packages installed in the venv disappear.
+    """
+    venv = os.environ.get("VIRTUAL_ENV")
+    if venv:
+        candidate = Path(venv) / "bin" / "python3"
+        if candidate.is_file():
+            return str(candidate)
+    which_python = shutil.which("python3")
+    if which_python:
+        resolved = Path(which_python).resolve()
+        local_bin = Path.home() / ".local" / "bin"
+        if Path(which_python).parent == local_bin or resolved.parent == local_bin:
+            venv_python = Path.home() / ".local" / "share" / "cohenix-python" / "bin" / "python3"
+            if venv_python.is_file():
+                return str(venv_python)
+        return which_python
+    return sys.executable
 
 
 def prepend_path(env: dict[str, str], *parts: str | Path) -> dict[str, str]:

@@ -13,7 +13,7 @@ from cohenix_dev.config import Settings
 from cohenix_dev.errors import CohenixError
 from cohenix_dev.output import cprint
 from cohenix_dev.runtime.pilot import bench_root, bench_subprocess_env, import_pilot_config, pilot_bin, run_pilot
-from cohenix_dev.util import port_is_live, which
+from cohenix_dev.util import port_is_live, python3, which
 
 PID_DIR = Path("/tmp")
 
@@ -120,7 +120,7 @@ def start_bench(settings: Settings) -> None:
     log = log_file(settings)
     with log.open("ab") as handle:
         process = subprocess.Popen(
-            [str(binary), "-b", settings.bench_name, "start"],
+            [python3(), str(binary), "-b", settings.bench_name, "start"],
             cwd=str(binary.parent.parent),
             stdout=handle,
             stderr=handle,

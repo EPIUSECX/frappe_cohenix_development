@@ -13,6 +13,10 @@ reason = """
 Pinned Pilot CLI imports top-level packaging during multi-app site install.
 v0.0.55 vendors packaging as pilot._vendor.packaging. Keep the pip fallback
 when import packaging fails so both releases work.
+
+Do not symlink the uv venv python into ~/.local/bin: CPython then uses
+~/.local as sys.prefix and the venv packages (including packaging) vanish.
+devctl must invoke Pilot with VIRTUAL_ENV/bin/python3.
 """
 
 [[workarounds]]

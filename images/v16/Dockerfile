@@ -160,9 +160,10 @@ RUN mkdir -p /home/frappe/.local/bin \
         /home/frappe/pilot \
     && uv python install "${PYTHON_VERSION}" \
     && uv venv "${VIRTUAL_ENV}" --python "${PYTHON_VERSION}" \
-    && ln -sf "${VIRTUAL_ENV}/bin/python" /home/frappe/.local/bin/python \
-    && ln -sf "${VIRTUAL_ENV}/bin/python3" /home/frappe/.local/bin/python3 \
-    && uv pip install --python "${VIRTUAL_ENV}/bin/python" pip virtualenv \
+    && printf '%s\n' '#!/bin/sh' "exec ${VIRTUAL_ENV}/bin/python \"\$@\"" > /home/frappe/.local/bin/python \
+    && printf '%s\n' '#!/bin/sh' "exec ${VIRTUAL_ENV}/bin/python3 \"\$@\"" > /home/frappe/.local/bin/python3 \
+    && chmod +x /home/frappe/.local/bin/python /home/frappe/.local/bin/python3 \
+    && uv pip install --python "${VIRTUAL_ENV}/bin/python" pip virtualenv packaging pymysql \
     && echo "export VIRTUAL_ENV=${VIRTUAL_ENV}" >> /home/frappe/.bashrc \
     && echo "export PATH=${VIRTUAL_ENV}/bin:/home/frappe/.local/bin:/usr/local/bin:\$PATH" >> /home/frappe/.bashrc \
     && echo "export PATH=${VIRTUAL_ENV}/bin:/home/frappe/.local/bin:/usr/local/bin:\$PATH" >> /home/frappe/.profile \
@@ -212,9 +213,11 @@ RUN python3 --version \
     && npm --version \
     && yarn --version \
     && uv --version \
-    && bench --help \
+    && command -v bench \
+    && python3 -c "import bench, packaging, pymysql" \
     && redis-server --version \
     && mariadb --version \
     && test ! -d /home/frappe/.pyenv \
-    && python3 -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
-RUN bash -lc "python3 --version && node --version && yarn --version && bench --help && devctl --help"
+    && python3 -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version" \
+    && python3 -c "import sys; assert 'cohenix-python' in sys.prefix, sys.prefix"
+RUN bash -lc "python3 --version && node --version && yarn --version && command -v bench && command -v devctl && devctl --help >/dev/null"

@@ -4,14 +4,16 @@ set -eu
 
 /workspace/scripts/on-create.sh
 
-python3 -m pip install --user --disable-pip-version-check -e /workspace 2>/dev/null \
-	|| uv pip install --python "${VIRTUAL_ENV:-python3}" -e /workspace
+PYTHON="${VIRTUAL_ENV:+$VIRTUAL_ENV/bin/python}"
+PYTHON="${PYTHON:-$(command -v python3)}"
+uv pip install --python "$PYTHON" -e /workspace
 hash -r 2>/dev/null || true
 
+# pre-commit is editor convenience, not required to provision a site.
 if command -v pre-commit >/dev/null 2>&1; then
 	:
 else
-	uv tool install pre-commit >/dev/null 2>&1 || python3 -m pip install --user pre-commit || true
+	uv tool install pre-commit >/dev/null 2>&1 || echo "pre-commit not installed (optional)"
 fi
 
 if [ -f /workspace/.pre-commit-config.yaml ]; then

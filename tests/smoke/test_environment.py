@@ -78,10 +78,9 @@ class EnvironmentSmokeTests(unittest.TestCase):
         self.assertTrue(_live(9000), "Socket.IO is not listening on 9000")
 
     def test_07_redis_ports(self):
-        # Pilot's default cache/queue ports with offset 0.
-        self.assertTrue(_live(13000) or _live(11000) or True)
-        # At least one Pilot redis must be up after start.
-        listening = [port for port in range(11000, 13010) if _live(port)]
+        listening = [port for port in (11000, 13000) if _live(port)]
+        if not listening:
+            listening = [port for port in range(11000, 13010) if _live(port)]
         self.assertTrue(listening, "No Pilot Redis port is listening")
 
     def test_08_fingerprint_and_provenance(self):
