@@ -7,7 +7,7 @@
 
 ARG UV_VERSION=0.11.33
 FROM debian:bookworm-slim AS uv-fetch
-ARG UV_VERSION
+ARG UV_VERSION=0.11.33
 ARG TARGETARCH
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y ca-certificates curl \
@@ -15,11 +15,11 @@ RUN apt-get update \
     && ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" \
     && if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then UV_ARCH=aarch64; else UV_ARCH=x86_64; fi \
     && curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ARCH}-unknown-linux-gnu.tar.gz" \
-        -o /tmp/uv.tar.gz \
+        -o "/tmp/uv-${UV_ARCH}-unknown-linux-gnu.tar.gz" \
     && curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ARCH}-unknown-linux-gnu.tar.gz.sha256" \
-        -o /tmp/uv.tar.gz.sha256 \
-    && cd /tmp && sha256sum -c uv.tar.gz.sha256 \
-    && tar -xzf /tmp/uv.tar.gz -C /tmp \
+        -o "/tmp/uv-${UV_ARCH}-unknown-linux-gnu.tar.gz.sha256" \
+    && cd /tmp && sha256sum -c "uv-${UV_ARCH}-unknown-linux-gnu.tar.gz.sha256" \
+    && tar -xzf "/tmp/uv-${UV_ARCH}-unknown-linux-gnu.tar.gz" -C /tmp \
     && mv /tmp/uv-${UV_ARCH}-unknown-linux-gnu/uv /uv \
     && chmod +x /uv
 
