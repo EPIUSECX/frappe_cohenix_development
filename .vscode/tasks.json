@@ -1,0 +1,91 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "devctl: start",
+      "type": "shell",
+      "command": "devctl start",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: stop",
+      "type": "shell",
+      "command": "devctl stop",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: restart",
+      "type": "shell",
+      "command": "devctl restart",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: verify",
+      "type": "shell",
+      "command": "devctl verify",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: doctor",
+      "type": "shell",
+      "command": "devctl doctor",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: sync",
+      "type": "shell",
+      "command": "devctl sync",
+      "problemMatcher": []
+    },
+    {
+      "label": "frappe: migrate",
+      "type": "shell",
+      "command": "pilot -b development-bench frappe --site cohenix.localhost migrate",
+      "problemMatcher": []
+    },
+    {
+      "label": "frappe: build assets",
+      "type": "shell",
+      "command": "pilot -b development-bench build",
+      "problemMatcher": []
+    },
+    {
+      "label": "frappe: clear cache",
+      "type": "shell",
+      "command": "pilot -b development-bench frappe --site cohenix.localhost clear-cache",
+      "problemMatcher": []
+    },
+    {
+      "label": "frappe: run tests",
+      "type": "shell",
+      "command": "pilot -b development-bench frappe --site cohenix.localhost run-tests",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: create site",
+      "type": "shell",
+      "command": "devctl site create ${input:siteName}",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: reset site",
+      "type": "shell",
+      "command": "devctl site reset ${input:siteName} --yes",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: open logs",
+      "type": "shell",
+      "command": "less +F /tmp/pilot-development-bench.log",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "siteName",
+      "type": "promptString",
+      "description": "Site name (.localhost recommended)",
+      "default": "cohenix.localhost"
+    }
+  ]
+}

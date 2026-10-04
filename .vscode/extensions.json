@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "esbenp.prettier-vscode",
+    "vue.volar",
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-mysql",
+    "ms-azuretools.vscode-docker"
+  ]
+}

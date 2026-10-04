@@ -1,0 +1,155 @@
+name: Development image
+
+on:
+  push:
+    branches: [version-16_cohenix]
+    paths:
+      - "images/**"
+      - "cohenix_dev/**"
+      - "config/**"
+      - "toolchain.toml"
+      - "pyproject.toml"
+      - ".devcontainer/**"
+      - ".github/workflows/image.yml"
+      - "tests/smoke/**"
+      - "scripts/**"
+  pull_request:
+    paths:
+      - "images/**"
+      - "cohenix_dev/**"
+      - "config/**"
+      - "toolchain.toml"
+      - "pyproject.toml"
+      - ".devcontainer/**"
+      - ".github/workflows/image.yml"
+      - "tests/smoke/**"
+      - "scripts/**"
+  workflow_dispatch:
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/epiusecx/cohenix-frappe-dev
+
+jobs:
+  build-and-smoke:
+    name: Build image and smoke-test a real site
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export toolchain
+        id: toolchain
+        run: python3 scripts/export_toolchain.py --github-output
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Image metadata
+        id: meta
+        run: |
+          TAG="${{ steps.toolchain.outputs.IMAGE_TAG }}"
+          DATE="$(date -u +%Y.%m.%d)"
+          SHA="$(echo "${{ github.sha }}" | cut -c1-7)"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "date_tag=${TAG}-${DATE}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${TAG}-${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build linux/amd64 image for smoke tests
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: images/v16/Dockerfile
+          target: cohenix-v16
+          load: true
+          tags: |
+            ${{ env.IMAGE }}:ci
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=cohenix-v16
+          cache-to: type=gha,scope=cohenix-v16,mode=max
+          build-args: |
+            PYTHON_VERSION=${{ steps.toolchain.outputs.PYTHON_VERSION }}
+            NODE_VERSION=${{ steps.toolchain.outputs.NODE_VERSION }}
+            YARN_VERSION=${{ steps.toolchain.outputs.YARN_VERSION }}
+            UV_VERSION=${{ steps.toolchain.outputs.UV_VERSION }}
+            PILOT_VERSION=${{ steps.toolchain.outputs.PILOT_VERSION }}
+            BENCH_REF=${{ steps.toolchain.outputs.BENCH_REF }}
+            COHENIX_IMAGE_TAG=${{ steps.meta.outputs.tag }}
+
+      - name: Record image size
+        run: docker image inspect ${{ env.IMAGE }}:ci --format '{{.Size}}' | tee docs/last-image-size.txt
+
+      - name: Smoke test
+        env:
+          COHENIX_DEV_IMAGE: ${{ env.IMAGE }}:ci
+          COMPOSE_PROJECT_NAME: cohenix-smoke
+        run: |
+          chmod +x tests/smoke/run-smoke.sh scripts/*.sh
+          tests/smoke/run-smoke.sh
+
+      - name: Upload smoke metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-metrics
+          path: |
+            docs/last-smoke-metrics.txt
+            docs/last-image-size.txt
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish multi-arch image
+    needs: build-and-smoke
+    if: github.event_name == 'push' && github.ref == 'refs/heads/version-16_cohenix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export toolchain
+        id: toolchain
+        run: python3 scripts/export_toolchain.py --github-output
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Publish linux/amd64 and linux/arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: images/v16/Dockerfile
+          target: cohenix-v16
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.toolchain.outputs.IMAGE_TAG }}
+            ${{ env.IMAGE }}:${{ steps.toolchain.outputs.IMAGE_TAG }}-${{ github.sha }}
+          cache-from: type=gha,scope=cohenix-v16
+          cache-to: type=gha,scope=cohenix-v16,mode=max
+          build-args: |
+            PYTHON_VERSION=${{ steps.toolchain.outputs.PYTHON_VERSION }}
+            NODE_VERSION=${{ steps.toolchain.outputs.NODE_VERSION }}
+            YARN_VERSION=${{ steps.toolchain.outputs.YARN_VERSION }}
+            UV_VERSION=${{ steps.toolchain.outputs.UV_VERSION }}
+            PILOT_VERSION=${{ steps.toolchain.outputs.PILOT_VERSION }}
+            BENCH_REF=${{ steps.toolchain.outputs.BENCH_REF }}
+            COHENIX_IMAGE_TAG=${{ steps.toolchain.outputs.IMAGE_TAG }}

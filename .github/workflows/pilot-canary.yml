@@ -1,0 +1,98 @@
+name: Pilot canary
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: pilot-canary
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  canary:
+    name: Compare pinned and canary Pilot releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export toolchain
+        id: toolchain
+        run: python3 scripts/export_toolchain.py --github-output
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compatibility unit tests (pinned)
+        env:
+          PILOT_VERSION: ${{ steps.toolchain.outputs.PILOT_VERSION }}
+        run: python -m unittest tests.test_pilot_compat tests.test_installer -v
+
+      - name: Resolve canary release
+        id: canary
+        run: |
+          echo "version=${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}" >> "$GITHUB_OUTPUT"
+          echo "Testing canary ${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: images/v16/Dockerfile
+          target: cohenix-v16
+          load: true
+          tags: ghcr.io/epiusecx/cohenix-frappe-dev:canary
+          cache-from: type=gha,scope=cohenix-v16
+          build-args: |
+            PYTHON_VERSION=${{ steps.toolchain.outputs.PYTHON_VERSION }}
+            NODE_VERSION=${{ steps.toolchain.outputs.NODE_VERSION }}
+            YARN_VERSION=${{ steps.toolchain.outputs.YARN_VERSION }}
+            UV_VERSION=${{ steps.toolchain.outputs.UV_VERSION }}
+            PILOT_VERSION=${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}
+            BENCH_REF=${{ steps.toolchain.outputs.BENCH_REF }}
+            COHENIX_IMAGE_TAG=v16
+
+      - name: Smoke test canary Pilot
+        id: smoke
+        continue-on-error: true
+        env:
+          COHENIX_DEV_IMAGE: ghcr.io/epiusecx/cohenix-frappe-dev:canary
+          PILOT_VERSION: ${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}
+          COMPOSE_PROJECT_NAME: cohenix-canary
+        run: |
+          chmod +x tests/smoke/run-smoke.sh scripts/*.sh
+          tests/smoke/run-smoke.sh
+
+      - name: Write report
+        if: always()
+        run: |
+          {
+            echo "# Pilot canary report"
+            echo
+            echo "- Pinned: \`${{ steps.toolchain.outputs.PILOT_VERSION }}\`"
+            echo "- Canary: \`${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}\`"
+            echo "- Canary smoke: ${{ steps.smoke.outcome }}"
+            echo
+            echo "The pinned release is not updated automatically."
+            if [ "${{ steps.smoke.outcome }}" = "success" ]; then
+              echo "Canary passed. Review a pin bump in toolchain.toml if you want to promote it."
+            else
+              echo "Canary failed. Keep the pin at \`${{ steps.toolchain.outputs.PILOT_VERSION }}\`."
+              echo "Inspect the smoke-test logs for the first compatibility failure."
+            fi
+          } | tee pilot-canary-report.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pilot-canary-report
+          path: pilot-canary-report.md

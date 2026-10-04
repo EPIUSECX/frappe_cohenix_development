@@ -1,0 +1,5 @@
+{
+  "python.defaultInterpreterPath": "/home/frappe/pilot/benches/development-bench/env/bin/python",
+  "editor.formatOnSave": true,
+  "debug.node.autoAttach": "disabled"
+}
