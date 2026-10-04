@@ -2,14 +2,19 @@
 # Start Pilot once per container and fail loudly when it exits during startup.
 set -eu
 
+if command -v devctl >/dev/null 2>&1; then
+	exec devctl start
+fi
+
+# Fallback for an image that does not yet have the CLI on PATH.
 BENCH_NAME="${BENCH_NAME:-development-bench}"
-PILOT_DIR="${PILOT_DIR:-/workspace/pilot}"
+PILOT_DIR="${PILOT_DIR:-/home/frappe/pilot}"
 PID_FILE="/tmp/pilot-${BENCH_NAME}.pid"
 LOG_FILE="/tmp/pilot-${BENCH_NAME}.log"
 PILOT_BIN="${PILOT_DIR}/bin/pilot"
 
 if [ ! -x "$PILOT_BIN" ]; then
-	printf 'Pilot is not installed at %s; run python installer.py first.\n' "$PILOT_BIN" >&2
+	printf 'Pilot is not installed at %s; run devctl sync first.\n' "$PILOT_BIN" >&2
 	exit 1
 fi
 
@@ -28,11 +33,10 @@ nohup "$PILOT_BIN" -b "$BENCH_NAME" start >"$LOG_FILE" 2>&1 </dev/null &
 pid=$!
 printf '%s\n' "$pid" >"$PID_FILE"
 
-# Catch immediate configuration/startup failures while keeping postStart quick.
 sleep 2
 if ! kill -0 "$pid" 2>/dev/null; then
 	printf 'Pilot failed to start. Recent output from %s:\n' "$LOG_FILE" >&2
-	tail -n 40 "$LOG_FILE" >&2 || true
+	tail -n 40 "$LOG_FILE" >&2
 	exit 1
 fi
 
