@@ -112,9 +112,17 @@ Publishing a GHCR image requires this job to pass.
 
 ### Image size and provisioning times
 
-Recorded by CI into `docs/last-image-size.txt` and
-`docs/last-smoke-metrics.txt` when the smoke workflow runs. Local values
-depend on cache; the design target is:
+Local amd64 image build (`cohenix-frappe-dev:v16-test`, vfs storage):
+
+- Image size: **1.47 GiB** (1,539,801,676 bytes)
+- Python: 3.14.2 (prebuilt CPython via uv, ~1s install, no pyenv compile)
+- Node: v24.12.0
+- Yarn: 1.22.22
+- uv: 0.11.33
+
+Fresh and repeat provisioning times are recorded by CI into
+`docs/last-smoke-metrics.txt` when `.github/workflows/image.yml` runs.
+The design target is:
 
 - image pull, not Python compile, on a normal Dev Container rebuild
 - repeat `devctl sync` with no config changes returns immediately after
