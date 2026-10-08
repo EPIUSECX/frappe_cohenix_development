@@ -98,3 +98,47 @@ class EnvironmentSmokeTests(unittest.TestCase):
         )
         with urllib.request.urlopen(request, timeout=15) as response:
             self.assertEqual(response.status, 200)
+
+    def test_10_bench_mutating_command_reloads_workers_without_stop(self):
+        """`bench --site X …` must respawn Pilot web, not require `pilot stop`."""
+        import subprocess
+
+        web_pid_file = self.root / "pids" / "web.pid"
+        supervisor = self.root / "pids" / "bench.pid"
+        self.assertTrue(supervisor.is_file(), "Pilot supervisor pid is missing")
+        before_supervisor = supervisor.read_text().strip()
+        before_web = web_pid_file.read_text().strip() if web_pid_file.is_file() else ""
+        result = subprocess.run(
+            ["bench", "--site", self.site, "clear-cache"],
+            cwd=str(self.root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        deadline = time.time() + 30
+        after_web = before_web
+        while time.time() < deadline:
+            if web_pid_file.is_file():
+                after_web = web_pid_file.read_text().strip()
+                if after_web and after_web != before_web:
+                    break
+            time.sleep(0.3)
+        self.assertEqual(
+            supervisor.read_text().strip(),
+            before_supervisor,
+            "Pilot supervisor should keep running (no full stop/start)",
+        )
+        self.assertNotEqual(
+            after_web,
+            before_web,
+            "Pilot web worker should respawn after a mutating bench command",
+        )
+        request = urllib.request.Request(
+            "http://127.0.0.1:8000/api/method/frappe.ping",
+            headers={"Host": self.site},
+        )
+        with urllib.request.urlopen(request, timeout=15) as response:
+            body = response.read().decode()
+            self.assertEqual(response.status, 200)
+        self.assertIn("pong", body.lower())

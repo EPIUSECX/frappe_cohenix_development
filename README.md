@@ -117,6 +117,7 @@ all read from it.
 | `devctl verify` | Fail if the provisioned environment is incomplete. |
 | `devctl status` | Short health view. |
 | `devctl start` / `stop` / `restart` | Pilot process set (web, workers, Socket.IO, Redis, scheduler). |
+| `devctl reload` | Reload web/workers only (no Redis stop). Happens automatically after `bench`/`pilot` install-app. |
 | `devctl site create second.localhost` | Extra site on the same HTTP port (Host routing). |
 | `devctl site reset cohenix.localhost --yes` | Drop one site. |
 | `devctl app add https://github.com/org/app --branch version-16` | Add an app overlay. |
@@ -130,6 +131,29 @@ all read from it.
 
 Classic Bench commands still work after `cd development-bench`. `bench start`
 is shimmed to Pilot. Prefer `devctl start`.
+
+## Installing apps (Pilot or Bench)
+
+You can use **either** `pilot` or classic `bench` to install apps while the
+site is running. You do **not** need to `pilot stop` / `pilot start`.
+
+```bash
+cd development-bench
+bench --site cohenix.localhost install-app payments
+# or
+pilot -b development-bench install-app cohenix.localhost payments
+```
+
+The running web process does not pick up a newly installed app by itself
+(Frappe CLI only updates the site; Pilot's install-app only clears cache).
+The Cohenix shims then ask Pilot to reload web/workers via
+`pids/reload.request`. Redis, file watch, and the admin UI stay up. Desk
+AJAX after install should work without a full restart.
+
+`bench restart` and `pilot restart` in this environment also mean that
+worker reload, not a full stop. Use `devctl restart` when you really want
+to tear the process set down. `devctl reload` is the explicit command.
+`COHENIX_SKIP_RELOAD=1` disables the post-command reload.
 
 ## Profiles
 

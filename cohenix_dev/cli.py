@@ -52,8 +52,18 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(start)
     stop = sub.add_parser("stop", help="Stop Pilot processes")
     _add_common(stop)
-    restart = sub.add_parser("restart", help="Restart Pilot processes")
+    restart = sub.add_parser("restart", help="Stop and start Pilot processes")
     _add_common(restart)
+    reload_cmd = sub.add_parser(
+        "reload",
+        help="Reload Pilot web/workers without stopping Redis (after bench/pilot install-app)",
+    )
+    _add_common(reload_cmd)
+    reload_cmd.add_argument(
+        "--web",
+        action="store_true",
+        help="Reload only the web process, not background workers",
+    )
 
     site = sub.add_parser("site", help="Site operations")
     site_sub = site.add_subparsers(dest="site_command", required=True)
@@ -155,6 +165,11 @@ def dispatch(args: argparse.Namespace) -> int:
         from cohenix_dev.runtime.processes import restart_bench
 
         restart_bench(settings)
+        return 0
+    if command == "reload":
+        from cohenix_dev.runtime.reload import reload_bench_workers
+
+        reload_bench_workers(settings, web_only=bool(getattr(args, "web", False)))
         return 0
     if command == "site":
         return _site(settings, args)

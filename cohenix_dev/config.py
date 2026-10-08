@@ -29,7 +29,9 @@ ADMIN_DEPS_FALLBACK = [
 ]
 PILOT_RELEASES_URL = "https://api.github.com/repos/frappe/pilot/releases?per_page=1"
 PILOT_RELEASE_DOWNLOAD_URL = "https://github.com/frappe/pilot/releases/download/{version}/pilot.tar.gz"
-BENCH_SHIM_MARKER = "# pilot-bench-shim v1"
+BENCH_SHIM_MARKER = "# pilot-bench-shim v2"
+PILOT_SHIM_MARKER = "# cohenix-pilot-shim v1"
+BENCH_SHIM_LEGACY_MARKERS = ("# pilot-bench-shim v1",)
 PROVISIONER_SCHEMA = 2
 
 

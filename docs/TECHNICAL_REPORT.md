@@ -48,7 +48,7 @@ small and v16-only.
 `python installer.py` remains as a compatibility wrapper.
 
 Commands: `sync`, `doctor`, `verify`, `status`, `start`, `stop`, `restart`,
-`site create|reset`, `app add|remove`, `profile use|list`, `reset`.
+`reload`, `site create|reset`, `app add|remove`, `profile use|list`, `reset`.
 
 Fingerprints live at
 `/home/frappe/pilot/benches/<name>/.cohenix/fingerprint.json`.
@@ -86,6 +86,7 @@ were not invented here.
 | Temporary Redis needed for `new-site` | Still started around site create |
 | `frappe migrate` requires Redis | Extra migrate is skipped after create/install, otherwise Redis is started |
 | Generated Procfile omits `frappe schedule` | `devctl start` adds it and starts the process |
+| `bench --site X install-app` / Pilot `install-app` leave running web stale | `devctl reload` + bench/pilot shims write `pids/reload.request` (not a full stop) |
 | `VERSION=dev` would get full history; we will not lie about the version | Deepen workaround kept |
 
 Do not set `PILOT_VERSION=latest` on the normal path.
@@ -99,7 +100,9 @@ Run with `python -m unittest discover -s tests -p 'test*.py' -v`.
 Covered: Pilot release URLs and checksums, profiles, fingerprints, incomplete
 venv recovery, CLI surface, toolchain agreement across Dockerfile/Compose/env,
 SQL identifier guard, installer wrapper, Pilot workaround manifest, stage
-progress reporter (banners, skip, heartbeat, GitHub Actions groups, sync wiring).
+progress reporter (banners, skip, heartbeat, GitHub Actions groups, sync wiring),
+worker reload (`pids/reload.request`, argv parsing for `bench --site … install-app`,
+v1→v2 shim upgrade, wrap-bench/wrap-pilot).
 
 ### Environment smoke tests
 
@@ -130,7 +133,8 @@ GitHub Actions image smoke on `241c9fb` (**passed**):
 - Fresh provisioning: **328s**
 - Repeat `devctl sync`: **0s**
 - `devctl doctor` → Environment healthy
-- HTTP, Socket.IO, restart persistence, and 9 in-container smoke tests passed
+- HTTP, Socket.IO, restart persistence, and in-container smoke tests passed
+  (including `bench --site …` worker reload without a full Pilot stop)
 - MariaDB **11.8.9**
 - Sites `cohenix.localhost` and `second.localhost` with frappe + erpnext + hrms
 - `assets.json` present

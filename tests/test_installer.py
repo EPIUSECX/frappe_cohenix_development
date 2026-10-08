@@ -161,7 +161,7 @@ class CliTests(unittest.TestCase):
     def test_help_lists_core_commands(self):
         parser = build_parser()
         text = parser.format_help()
-        for name in ("sync", "doctor", "verify", "status", "start", "reset"):
+        for name in ("sync", "doctor", "verify", "status", "start", "reload", "reset"):
             self.assertIn(name, text)
 
     def test_latest_pilot_is_rejected(self):
@@ -226,7 +226,9 @@ class InterpreterTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"VIRTUAL_ENV": directory}):
                 ensure_bench_start_shim()
             self.assertTrue((bin_dir / "bench.frappe").is_file())
-            self.assertIn(BENCH_SHIM_MARKER, (bin_dir / "bench").read_text())
+            text = (bin_dir / "bench").read_text()
+            self.assertIn(BENCH_SHIM_MARKER, text)
+            self.assertIn("--wrap-bench", text)
 
 
 class ToolchainAgreementTests(unittest.TestCase):

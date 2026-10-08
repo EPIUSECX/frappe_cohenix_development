@@ -28,6 +28,8 @@ def ensure_classic_bench_compat(settings: Settings) -> None:
     if not pids.is_dir() and (bench_root(settings) / "bench.toml").exists():
         pids.mkdir(parents=True, exist_ok=True)
         cprint(f"Created {pids} so frappe/bench commands work in the bench directory", level=3)
+    # Top-level pids/ is where Pilot looks for reload.request / bench.pid.
+    (bench_root(settings) / "pids").mkdir(parents=True, exist_ok=True)
     ensure_test_dependencies(settings)
 
 

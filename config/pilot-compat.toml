@@ -104,7 +104,24 @@ reason = "Pilot has no new-site --set-default; localhost would 404 without serve
 id = "bench-start-shim"
 still_required_on_pinned = true
 still_required_on_canary = true
-reason = "Pilot writes no Procfile; `bench start` must delegate to Pilot."
+reason = """
+Pilot writes no Procfile; `bench start` must delegate to Pilot. The v2 shim
+also maps `bench stop`/`restart`/`reload` onto Pilot and, after mutating
+commands such as install-app, writes pids/reload.request so workers pick up
+the new app without a full Pilot stop/start.
+"""
+
+[[workarounds]]
+id = "worker-reload"
+still_required_on_pinned = true
+still_required_on_canary = true
+reason = """
+Neither classic `bench --site X install-app` (Frappe CLI) nor Pilot's
+install-app command restarts running web/workers. Classic Bench.reload()
+only knows Overmind. Desk then AJAX-errors until a full Pilot restart.
+devctl reload (and the bench/pilot shims) use Pilot's pids/reload.request
+IPC so Redis, watch, and admin stay up.
+"""
 
 [[workarounds]]
 id = "procfile-omits-scheduler"

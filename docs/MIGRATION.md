@@ -24,7 +24,9 @@ You can keep using `python installer.py`; it calls `devctl sync`.
 - Default site is still `cohenix.localhost`.
 - Incomplete venv / half-created site / missing `assets.json` recovery remains.
 - MariaDB user host grants are still repaired to `%`.
-- `bench start` is still shimmed to Pilot.
+- `bench start` is still shimmed to Pilot. The shim now also reloads Pilot
+  workers after `bench --site … install-app` (and other mutating commands)
+  so Desk does not AJAX-error until a full Pilot stop/start.
 
 ## Behaviour that changes
 

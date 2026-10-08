@@ -41,7 +41,7 @@ def ensure_bench_config_files(settings: Settings) -> None:
     root = bench_root(settings)
     if not all((root / "config" / name).exists() for name in ("redis_cache.conf", "redis_queue.conf")):
         cprint("Bench config/ is incomplete, regenerating ...", level=2)
-        run_pilot(settings, "--bench", settings.bench_name, "setup", "config")
+        run_pilot(settings, "--bench", settings.bench_name, "setup", "config", reload_after=False)
     ensure_scheduler_procfile(settings)
 
 
