@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,20 +8,18 @@ from types import SimpleNamespace
 from unittest import mock
 
 import installer
-from cohenix_dev.cli import build_parser, main
+from cohenix_dev.cli import build_parser
 from cohenix_dev.config import (
     ConfigError,
     resolve_profile,
     settings_from_env,
-    write_local_profile,
 )
 from cohenix_dev.provisioning.bench import bench_is_initialised, clear_incomplete_venv
 from cohenix_dev.reset import DestructiveResetAborted, confirm_or_abort
-from cohenix_dev.runtime.pilot import expected_pilot_sha256, pilot_release_asset
+from cohenix_dev.runtime.pilot import expected_pilot_sha256
 from cohenix_dev.state.fingerprint import (
     AppFingerprint,
     Fingerprint,
-    plan_sync,
 )
 
 
@@ -30,8 +29,7 @@ class PilotReleaseTests(unittest.TestCase):
         self.assertEqual(version, "v0.0.23-pre-alpha")
         self.assertEqual(
             url,
-            "https://github.com/frappe/pilot/releases/download/"
-            "v0.0.23-pre-alpha/pilot.tar.gz",
+            "https://github.com/frappe/pilot/releases/download/v0.0.23-pre-alpha/pilot.tar.gz",
         )
 
     def test_invalid_release_tag_is_rejected(self):
@@ -90,7 +88,6 @@ class FingerprintTests(unittest.TestCase):
             ],
             sites=["cohenix.localhost"],
         )
-        plan = plan_sync.__wrapped__ if hasattr(plan_sync, "__wrapped__") else None
         # Compare requested_key equality used by the planner.
         self.assertEqual(fingerprint.requested_key(), fingerprint.requested_key())
 
@@ -164,7 +161,7 @@ class CliTests(unittest.TestCase):
     def test_help_lists_core_commands(self):
         parser = build_parser()
         text = parser.format_help()
-        for name in ("sync", "doctor", "verify", "status", "start", "reset"):
+        for name in ("sync", "doctor", "verify", "status", "start", "reload", "reset"):
             self.assertIn(name, text)
 
     def test_latest_pilot_is_rejected(self):
@@ -229,14 +226,15 @@ class InterpreterTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"VIRTUAL_ENV": directory}):
                 ensure_bench_start_shim()
             self.assertTrue((bin_dir / "bench.frappe").is_file())
-            self.assertIn(BENCH_SHIM_MARKER, (bin_dir / "bench").read_text())
+            text = (bin_dir / "bench").read_text()
+            self.assertIn(BENCH_SHIM_MARKER, text)
+            self.assertIn("--wrap-bench", text)
 
 
 class ToolchainAgreementTests(unittest.TestCase):
     def test_export_script_matches_toolchain_file(self):
-        from pathlib import Path
-
         import tomllib
+        from pathlib import Path
 
         root = Path(__file__).resolve().parents[1]
         data = tomllib.loads((root / "toolchain.toml").read_text())
@@ -258,6 +256,64 @@ class ToolchainAgreementTests(unittest.TestCase):
         self.assertIn("target: cohenix-v16", compose)
         self.assertNotIn("skip-innodb-read-only-compressed", compose)
         self.assertNotIn("mariadb:10.6", compose)
+        self.assertIn("COHENIX_SKIP_AUTOSYNC", compose)
+        self.assertIn("COHENIX_SKIP_DOCTOR", compose)
+
+
+class DevContainerLifecycleTests(unittest.TestCase):
+    def test_editor_waits_until_start_and_doctor_finish(self):
+        root = Path(__file__).resolve().parents[1]
+        data = json.loads((root / ".devcontainer" / "devcontainer.json").read_text())
+        self.assertEqual(data["waitFor"], "postStartCommand")
+        self.assertEqual(data["postCreateCommand"], "/workspace/scripts/post-create.sh")
+        self.assertEqual(data["postStartCommand"], "/workspace/scripts/start-dev.sh")
+
+    def test_lifecycle_scripts_are_valid_posix_sh(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("on-create.sh", "post-create.sh", "start-dev.sh", "cohenix-lifecycle.sh"):
+            path = root / "scripts" / name
+            result = subprocess.run(["sh", "-n", str(path)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_create_syncs_and_start_syncs_starts_and_doctors(self):
+        root = Path(__file__).resolve().parents[1]
+        post_create = (root / "scripts" / "post-create.sh").read_text()
+        start = (root / "scripts" / "start-dev.sh").read_text()
+        helpers = (root / "scripts" / "cohenix-lifecycle.sh").read_text()
+        self.assertIn("cohenix_sync", post_create)
+        self.assertNotIn("cohenix_doctor", post_create)
+        self.assertIn("cohenix_sync", start)
+        self.assertIn("cohenix_start", start)
+        self.assertIn("cohenix_doctor", start)
+        self.assertNotIn("exec devctl start", start)
+        self.assertIn("COHENIX_SKIP_AUTOSYNC", helpers)
+        self.assertIn("COHENIX_SKIP_DOCTOR", helpers)
+
+    def test_skip_autosync_does_not_call_devctl(self):
+        root = Path(__file__).resolve().parents[1]
+        script = f"""
+. "{root / "scripts" / "cohenix-lifecycle.sh"}"
+cohenix_run_devctl() {{ echo RAN; return 1; }}
+COHENIX_SKIP_AUTOSYNC=1
+cohenix_sync
+"""
+        result = subprocess.run(["sh", "-c", script], capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("RAN", result.stdout)
+        self.assertIn("Skipping automatic devctl sync", result.stdout)
+
+    def test_skip_doctor_does_not_call_devctl(self):
+        root = Path(__file__).resolve().parents[1]
+        script = f"""
+. "{root / "scripts" / "cohenix-lifecycle.sh"}"
+cohenix_run_devctl() {{ echo RAN; return 1; }}
+COHENIX_SKIP_DOCTOR=1
+cohenix_doctor
+"""
+        result = subprocess.run(["sh", "-c", script], capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("RAN", result.stdout)
+        self.assertIn("Skipping automatic devctl doctor", result.stdout)
 
 
 class SqlIdentifierTests(unittest.TestCase):
@@ -274,6 +330,7 @@ class ImportTests(unittest.TestCase):
 
         self.assertTrue(callable(run_checks))
         self.assertTrue(callable(render_doctor))
+
     def test_installer_parser_still_exposes_verify_only(self):
         from cohenix_dev.compat import get_args_parser
 

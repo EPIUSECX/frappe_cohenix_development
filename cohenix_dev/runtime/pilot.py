@@ -17,10 +17,12 @@ from typing import Any
 
 from cohenix_dev.config import (
     ADMIN_DEPS_FALLBACK,
+    BENCH_SHIM_LEGACY_MARKERS,
     BENCH_SHIM_MARKER,
     PILOT_CLI_DEPS,
     PILOT_RELEASE_DOWNLOAD_URL,
     PILOT_RELEASES_URL,
+    PILOT_SHIM_MARKER,
     Settings,
     load_checksums,
     load_toolchain,
@@ -252,49 +254,59 @@ def ensure_admin_venv(settings: Settings) -> None:
 
 
 def ensure_pilot_on_path(settings: Settings) -> None:
+    """Expose `pilot` on PATH and wrap mutating commands so workers reload."""
     link = Path.home() / ".local" / "bin" / "pilot"
     link.parent.mkdir(parents=True, exist_ok=True)
     target = pilot_bin(settings)
+    if not target.exists():
+        return
+    text = link.read_text(errors="ignore") if link.is_file() and not link.is_symlink() else ""
+    if PILOT_SHIM_MARKER in text and f'REAL="{target}"' in text:
+        return
     if link.is_symlink() or link.exists():
         link.unlink()
-    link.symlink_to(target)
-    cprint(f"Pilot available as `pilot` ({link} -> {target})", level=3)
+    from cohenix_dev.runtime.reload import render_pilot_shim
+
+    link.write_text(render_pilot_shim(target, python3(), PILOT_SHIM_MARKER), encoding="utf-8")
+    link.chmod(0o755)
+    cprint(f"Pilot available as `pilot` ({link} wraps {target})", level=3)
 
 
 def ensure_bench_start_shim() -> None:
-    """Make `bench start` call Pilot. Wrap the venv console script when present."""
+    """Wrap `bench` so start/stop/restart talk to Pilot and installs reload workers."""
+    from cohenix_dev.runtime.reload import render_bench_shim
+
     locations: list[Path] = []
     venv = os.environ.get("VIRTUAL_ENV")
     if venv:
         locations.append(Path(venv) / "bin")
     locations.append(Path.home() / ".local" / "bin")
+    wrapped = 0
+    python = python3()
     for bin_dir in locations:
         wrapper = bin_dir / "bench"
         if not wrapper.exists() and not (bin_dir / "bench.frappe").exists():
             continue
         bin_dir.mkdir(parents=True, exist_ok=True)
         real = bin_dir / "bench.frappe"
-        already_shimmed = wrapper.is_file() and BENCH_SHIM_MARKER in wrapper.read_text(errors="ignore")
-        if already_shimmed:
-            return
+        current = wrapper.read_text(errors="ignore") if wrapper.is_file() else ""
+        if BENCH_SHIM_MARKER in current and f'REAL="{real}"' in current:
+            wrapped += 1
+            continue
         if wrapper.exists() and not real.exists():
-            wrapper.rename(real)
+            if any(marker in current for marker in BENCH_SHIM_LEGACY_MARKERS) or BENCH_SHIM_MARKER in current:
+                # v1/broken shim still needs the original console script beside it.
+                cprint(f"Replacing outdated bench shim at {wrapper}", level=3)
+            else:
+                wrapper.rename(real)
         if not real.exists():
             continue
-        wrapper.write_text(
-            "#!/usr/bin/env bash\n"
-            f"{BENCH_SHIM_MARKER}\n"
-            'if [ "${1:-}" = "start" ]; then\n'
-            "    shift\n"
-            '    exec pilot -b "$(basename "$PWD")" start "$@"\n'
-            "else\n"
-            f'    exec "{real}" "$@"\n'
-            "fi\n"
-        )
+        wrapper.write_text(render_bench_shim(real, python, BENCH_SHIM_MARKER), encoding="utf-8")
         wrapper.chmod(0o755)
-        cprint(f"`bench start` now delegates to Pilot ({wrapper})", level=3)
-        return
-    cprint("No frappe/bench console-script found to wrap, skipping bench-start shim", level=3)
+        wrapped += 1
+        cprint(f"`bench` delegates lifecycle and post-install reload to Pilot ({wrapper})", level=3)
+    if not wrapped:
+        cprint("No frappe/bench console-script found to wrap, skipping bench shim", level=3)
 
 
 def bench_subprocess_env(settings: Settings | None = None) -> dict[str, str]:
@@ -318,14 +330,29 @@ def bench_subprocess_env(settings: Settings | None = None) -> dict[str, str]:
     return env
 
 
-def run_pilot(settings: Settings, *cli_args: Any, cwd: str | Path | None = None) -> None:
+def run_pilot(
+    settings: Settings,
+    *cli_args: Any,
+    cwd: str | Path | None = None,
+    reload_after: bool | None = None,
+) -> None:
     # Invoke with the venv interpreter so Pilot's `#!/usr/bin/env python3`
     # shebang cannot pick up a broken ~/.local/bin/python3 symlink.
+    # This path uses PILOT_DIR/bin/pilot (not the PATH wrapper), so mutating
+    # commands must request a worker reload themselves.
     command = [python3(), str(pilot_bin(settings))]
     if settings.verbose:
         command.append("--verbose")
     command += [str(a) for a in cli_args]
     run_command(command, cwd=cwd or str(pilot_dir(settings)), env=bench_subprocess_env(settings))
+    if reload_after is None:
+        from cohenix_dev.runtime.reload import should_reload_after
+
+        reload_after = should_reload_after([str(a) for a in cli_args])
+    if reload_after:
+        from cohenix_dev.runtime.reload import reload_bench_workers
+
+        reload_bench_workers(settings)
 
 
 def import_pilot_config(settings: Settings):

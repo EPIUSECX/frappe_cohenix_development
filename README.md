@@ -20,28 +20,70 @@ cd frappe_cohenix_development
 
 Open the folder in VS Code or Cursor and choose **Reopen in Container**.
 
-When the container is ready:
+Wait until the Dev Container finishes **postStart** (the editor waits for it).
+That automatically runs:
 
-```bash
-devctl sync
-devctl doctor
-```
+1. `devctl sync` — first create is about five minutes for ERPNext + HR; later
+   reopens are **0s** when the fingerprint already matches
+2. `devctl start` — web, workers, Socket.IO, Redis, scheduler
+3. `devctl doctor` — prints healthy (or how to fix it)
 
-The default site is [http://cohenix.localhost:8000/app](http://cohenix.localhost:8000/app).
+You do **not** type those commands. The default site is then
+[http://cohenix.localhost:8000/app](http://cohenix.localhost:8000/app).
 Administrator password: `admin`.
 
-That is the whole happy path. `devctl` talks to Pilot, Bench, MariaDB, and
-Redis for you.
+To skip automatic provision (a blank bench, or you want to drive `devctl`
+yourself), set `COHENIX_SKIP_AUTOSYNC=1` in `.devcontainer/.env`.
+`COHENIX_SKIP_DOCTOR=1` skips the health check only.
 
-### Cloud agents and CI
+## Performance
+
+The main win is **not compiling the toolchain on a developer machine**.
+
+| What | Previous bootstrap | Cohenix v16 platform |
+|---|---|---|
+| Python | pyenv compiled 3.10 **and** 3.14 on every image rebuild | uv installs prebuilt CPython **3.14.2** (~1s at image build) |
+| Node | nvm installed 16 **and** 24 | Official **24.12.0** tarball, SHA256-checked |
+| Image rebuild | Local compile of two Pythons and two Nodes | Pull `ghcr.io/epiusecx/cohenix-frappe-dev:v16` (`pull_policy: missing`) |
+| Image size | Two runtimes per language | **1.47 GiB** (measured amd64, 1,539,801,676 bytes) |
+| Fresh `devctl sync` (hr profile, two sites, ERPNext + HRMS) | After the image compile, then installer.py | **328s** in GitHub Actions image smoke (`241c9fb`) |
+| Repeat `devctl sync` with no config change | Re-ran installer work | **0s** (`nothing to do`, fingerprint match) |
+| Container restart | Could reinstall | Named volumes persist; `devctl start` only |
+
+CI writes `docs/last-smoke-metrics.txt` (`FRESH_SECONDS` / `REPEAT_SECONDS`) on
+each image workflow run. Those two numbers are measured. The old pyenv compile
+was not re-timed in this repository; a typical CPython pyenv build is several
+minutes **per version**, and the previous Dockerfile built two Pythons and two
+Nodes. That cost is gone from the daily loop.
+
+## Watching progress
+
+`devctl sync` and `devctl start` are still non-interactive (CI and coding
+agents never get a prompt). They now **sell the current stage** on the terminal:
+
+1. A header with profile, Python, Node, Pilot, bench, sites, and apps.
+2. Numbered banners `>>> [3/10] Initialize bench` around each step, including
+   Pilot's own `[1/12]` bars.
+3. A heartbeat every 15 seconds while a stage is still running, so a quiet
+   `pilot init` or site create is not a black box.
+4. `<<< [3/10] Initialize bench  done (56s)` when the step finishes, or
+   `skipped` when the fingerprint says it is unnecessary.
+5. A timing table at the end.
+
+On GitHub Actions the same stages become collapsible `::group::` log sections
+(the Compose service receives `GITHUB_ACTIONS`). There is no `input()`, no
+spinner that fights Pilot's output, and no TTY requirement.
+
+## Cloud agents and CI
 
 ```bash
 devcontainer up --workspace-folder .
-devcontainer exec --workspace-folder . devctl sync
-devcontainer exec --workspace-folder . devctl verify
+# postCreate sync + postStart start/doctor run automatically
+devcontainer exec --workspace-folder . devctl doctor
 ```
 
-Or with Compose directly:
+Or with Compose directly (Compose does **not** run Dev Container lifecycle
+hooks, so you still provision by hand):
 
 ```bash
 docker compose -f .devcontainer/docker-compose.yml up -d --build
@@ -75,6 +117,7 @@ all read from it.
 | `devctl verify` | Fail if the provisioned environment is incomplete. |
 | `devctl status` | Short health view. |
 | `devctl start` / `stop` / `restart` | Pilot process set (web, workers, Socket.IO, Redis, scheduler). |
+| `devctl reload` | Reload web/workers only (no Redis stop). Happens automatically after `bench`/`pilot` install-app. |
 | `devctl site create second.localhost` | Extra site on the same HTTP port (Host routing). |
 | `devctl site reset cohenix.localhost --yes` | Drop one site. |
 | `devctl app add https://github.com/org/app --branch version-16` | Add an app overlay. |
@@ -88,6 +131,29 @@ all read from it.
 
 Classic Bench commands still work after `cd development-bench`. `bench start`
 is shimmed to Pilot. Prefer `devctl start`.
+
+## Installing apps (Pilot or Bench)
+
+You can use **either** `pilot` or classic `bench` to install apps while the
+site is running. You do **not** need to `pilot stop` / `pilot start`.
+
+```bash
+cd development-bench
+bench --site cohenix.localhost install-app payments
+# or
+pilot -b development-bench install-app cohenix.localhost payments
+```
+
+The running web process does not pick up a newly installed app by itself
+(Frappe CLI only updates the site; Pilot's install-app only clears cache).
+The Cohenix shims then ask Pilot to reload web/workers via
+`pids/reload.request`. Redis, file watch, and the admin UI stay up. Desk
+AJAX after install should work without a full restart.
+
+`bench restart` and `pilot restart` in this environment also mean that
+worker reload, not a full stop. Use `devctl restart` when you really want
+to tear the process set down. `devctl reload` is the explicit command.
+`COHENIX_SKIP_RELOAD=1` disables the post-command reload.
 
 ## Profiles
 

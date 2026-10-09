@@ -1,23 +1,17 @@
 #!/bin/sh
-# Install the live workspace CLI and provision the development environment.
+# One-time Dev Container setup: volume ownership, live CLI, first provision.
+# postCreateCommand. `devctl start` and `devctl doctor` run on every start.
 set -eu
 
 /workspace/scripts/on-create.sh
 
-PYTHON="${VIRTUAL_ENV:+$VIRTUAL_ENV/bin/python}"
-PYTHON="${PYTHON:-$(command -v python3)}"
-uv pip install --python "$PYTHON" -e /workspace
-hash -r 2>/dev/null || true
-
-# pre-commit is editor convenience, not required to provision a site.
-if command -v pre-commit >/dev/null 2>&1; then
-	:
+if [ -f /workspace/scripts/cohenix-lifecycle.sh ]; then
+	. /workspace/scripts/cohenix-lifecycle.sh
 else
-	uv tool install pre-commit >/dev/null 2>&1 || echo "pre-commit not installed (optional)"
+	. "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/cohenix-lifecycle.sh"
 fi
 
-if [ -f /workspace/.pre-commit-config.yaml ]; then
-	pre-commit install --install-hooks >/dev/null 2>&1 || true
-fi
-
-devctl sync
+cohenix_install_live_cli
+cohenix_optional_precommit
+cohenix_wait_for_mariadb
+cohenix_sync

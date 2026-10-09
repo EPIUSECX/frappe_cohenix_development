@@ -17,6 +17,7 @@ class PilotCompatManifestTests(unittest.TestCase):
             "shallow-clone-history",
             "incomplete-venv-recovery",
             "bench-start-shim",
+            "worker-reload",
             "procfile-omits-scheduler",
             "migrate-needs-redis",
             "venv-python-symlink",

@@ -84,6 +84,10 @@ services:
       PYTHONPATH: /workspace
       COHENIX_PROFILE: ${COHENIX_PROFILE:-hr}
       COHENIX_IMAGE_REF: ${COHENIX_DEV_IMAGE:-ghcr.io/epiusecx/cohenix-frappe-dev:v16}
+      COHENIX_SKIP_AUTOSYNC: ${COHENIX_SKIP_AUTOSYNC:-}
+      COHENIX_SKIP_DOCTOR: ${COHENIX_SKIP_DOCTOR:-}
+      GITHUB_ACTIONS: ${GITHUB_ACTIONS:-}
+      CI: ${CI:-}
       UV_CACHE_DIR: /home/frappe/.cache/uv
       YARN_CACHE_FOLDER: /home/frappe/.cache/yarn
       npm_config_cache: /home/frappe/.npm

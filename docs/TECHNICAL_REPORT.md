@@ -36,6 +36,11 @@ small and v16-only.
 - Bind mount is only `/workspace` (this repository).
 - Frappe HTTP/realtime ports are Dev Container `forwardPorts` with
   `portsAttributes`. MariaDB and Redis are not published on the host.
+- **Reopen in Container** auto-runs `devctl sync` (postCreate + postStart),
+  `devctl start`, and `devctl doctor`. The editor `waitFor`s `postStartCommand`
+  so the site is up when the window connects. Opt out with
+  `COHENIX_SKIP_AUTOSYNC=1` / `COHENIX_SKIP_DOCTOR=1`. Compose `up` does not
+  run those hooks; CI and compose-only agents still call `devctl` themselves.
 
 ### Layer 3 — `devctl`
 
@@ -43,7 +48,7 @@ small and v16-only.
 `python installer.py` remains as a compatibility wrapper.
 
 Commands: `sync`, `doctor`, `verify`, `status`, `start`, `stop`, `restart`,
-`site create|reset`, `app add|remove`, `profile use|list`, `reset`.
+`reload`, `site create|reset`, `app add|remove`, `profile use|list`, `reset`.
 
 Fingerprints live at
 `/home/frappe/pilot/benches/<name>/.cohenix/fingerprint.json`.
@@ -81,6 +86,7 @@ were not invented here.
 | Temporary Redis needed for `new-site` | Still started around site create |
 | `frappe migrate` requires Redis | Extra migrate is skipped after create/install, otherwise Redis is started |
 | Generated Procfile omits `frappe schedule` | `devctl start` adds it and starts the process |
+| `bench --site X install-app` / Pilot `install-app` leave running web stale | `devctl reload` + bench/pilot shims write `pids/reload.request` (not a full stop) |
 | `VERSION=dev` would get full history; we will not lie about the version | Deepen workaround kept |
 
 Do not set `PILOT_VERSION=latest` on the normal path.
@@ -93,7 +99,10 @@ Run with `python -m unittest discover -s tests -p 'test*.py' -v`.
 
 Covered: Pilot release URLs and checksums, profiles, fingerprints, incomplete
 venv recovery, CLI surface, toolchain agreement across Dockerfile/Compose/env,
-SQL identifier guard, installer wrapper, Pilot workaround manifest.
+SQL identifier guard, installer wrapper, Pilot workaround manifest, stage
+progress reporter (banners, skip, heartbeat, GitHub Actions groups, sync wiring),
+worker reload (`pids/reload.request`, argv parsing for `bench --site … install-app`,
+v1→v2 shim upgrade, wrap-bench/wrap-pilot).
 
 ### Environment smoke tests
 
@@ -124,7 +133,8 @@ GitHub Actions image smoke on `241c9fb` (**passed**):
 - Fresh provisioning: **328s**
 - Repeat `devctl sync`: **0s**
 - `devctl doctor` → Environment healthy
-- HTTP, Socket.IO, restart persistence, and 9 in-container smoke tests passed
+- HTTP, Socket.IO, restart persistence, and in-container smoke tests passed
+  (including `bench --site …` worker reload without a full Pilot stop)
 - MariaDB **11.8.9**
 - Sites `cohenix.localhost` and `second.localhost` with frappe + erpnext + hrms
 - `assets.json` present
@@ -160,14 +170,48 @@ Local amd64 image build (`cohenix-frappe-dev:v16-test`, vfs storage):
 - Yarn: 1.22.22
 - uv: 0.11.33
 
-Fresh and repeat provisioning times are recorded by CI into
+Measured GitHub Actions image smoke on `241c9fb`:
+
+| Metric | Value |
+|---|---|
+| Fresh `devctl sync` (hr, two sites, ERPNext + HRMS) | **328s** |
+| Repeat `devctl sync` (fingerprint match) | **0s** |
+| Pilot install + bench init (local recovery run) | **56s** |
+
+CI records `FRESH_SECONDS` / `REPEAT_SECONDS` into
 `docs/last-smoke-metrics.txt` when `.github/workflows/image.yml` runs.
+
+The daily-loop improvement versus the previous `resources/Dockerfile`
+bootstrap is **image pull instead of compile**. The old image built Python
+3.10 and 3.14 with pyenv and Node 16 and 24 with nvm on every rebuild.
+Those compiles were not re-measured here; they are the cost the v16 image
+removes. After the image exists, provisioning time is Frappe/ERPNext work
+(clone, wheel install, `new-site`, `install-app`), which is unchanged in
+kind and now skippable on repeat via fingerprints.
+
 The design target is:
 
 - image pull, not Python compile, on a normal Dev Container rebuild
 - repeat `devctl sync` with no config changes returns immediately after
   fingerprint comparison
 - MariaDB data, Pilot benches, and package caches survive container recreate
+
+### Progress UX
+
+`devctl sync` and `devctl start` print a non-interactive stage reporter
+(`cohenix_dev/progress.py`):
+
+- header: profile, Python, Node, Pilot, bench, sites, apps
+- numbered `>>> [n/N]` / `<<< [n/N] done (time)` banners
+- 15s heartbeat while a stage is still running
+- skipped stages when the fingerprint plan has nothing to do
+- end-of-run timing table
+- GitHub Actions `::group::` sections when `GITHUB_ACTIONS=true`
+
+No prompts. Pilot's own `[1/12]` init output is left intact and nested
+under the Cohenix stage. Compose forwards `GITHUB_ACTIONS` and `CI` into
+the Frappe service so CI logs group the same way. The same banners appear
+in the VS Code / Cursor Dev Container log while postCreate/postStart run.
 
 ## Recommended next steps
 
