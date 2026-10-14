@@ -198,7 +198,7 @@ class Settings:
     db_port: int | None = None
     db_login_scope: str = "%"
     pilot_dir: str = "/home/frappe/pilot"
-    pilot_version: str = "v0.0.23-pre-alpha"
+    pilot_version: str = "latest"
     http_port: int = DEFAULT_HTTP_PORT
     socketio_port: int = DEFAULT_SOCKETIO_PORT
     admin_port: int = DEFAULT_ADMIN_PORT
@@ -277,7 +277,7 @@ def settings_from_env(overrides: dict[str, Any] | None = None) -> Settings:
         admin_password=os.environ.get("ADMIN_PASSWORD", defaults.get("admin_password", "admin")),
         db_root_password=os.environ.get("DB_ROOT_PASSWORD", defaults.get("db_root_password", "123")),
         pilot_dir=os.environ.get("PILOT_DIR", defaults.get("pilot_dir", "/home/frappe/pilot")),
-        pilot_version=os.environ.get("PILOT_VERSION", pilot.get("version", "v0.0.23-pre-alpha")),
+        pilot_version=os.environ.get("PILOT_VERSION", pilot.get("version", "latest")),
         http_port=int(os.environ.get("HTTP_PORT", defaults.get("http_port", DEFAULT_HTTP_PORT))),
         socketio_port=int(os.environ.get("SOCKETIO_PORT", defaults.get("socketio_port", DEFAULT_SOCKETIO_PORT))),
         admin_port=int(os.environ.get("ADMIN_PORT", defaults.get("admin_port", DEFAULT_ADMIN_PORT))),
@@ -290,11 +290,6 @@ def settings_from_env(overrides: dict[str, Any] | None = None) -> Settings:
             if value is None:
                 continue
             setattr(settings, key, value)
-    if settings.pilot_version == "latest" and not os.environ.get("COHENIX_ALLOW_PILOT_LATEST"):
-        raise ConfigError(
-            "PILOT_VERSION=latest is not allowed on the normal path. "
-            "Set an explicit tag, or COHENIX_ALLOW_PILOT_LATEST=1 for a controlled experiment."
-        )
     return settings
 
 

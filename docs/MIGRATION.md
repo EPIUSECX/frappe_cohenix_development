@@ -49,5 +49,5 @@ v16 image.
 ## Environment variables
 
 Copy `.devcontainer/.env.example` to `.devcontainer/.env` only when you need
-overrides. `PILOT_VERSION=latest` is rejected unless
-`COHENIX_ALLOW_PILOT_LATEST=1` is set for a controlled experiment.
+overrides. Leave `PILOT_VERSION` unset, or set it to `latest`, so `devctl sync`
+installs the newest Pilot release. An explicit tag freezes that release.

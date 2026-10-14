@@ -1,5 +1,6 @@
-# Pilot compatibility audit against the pinned release and the canary release.
-# Workarounds stay until a test proves the replacement is safe.
+# Last compatibility audit. The development environment does not install these
+# tags; `devctl sync` follows the newest Pilot release. Workarounds stay until
+# a test proves the replacement is safe.
 
 schema_version = 1
 pinned = "v0.0.23-pre-alpha"

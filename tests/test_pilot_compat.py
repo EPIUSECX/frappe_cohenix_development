@@ -26,12 +26,9 @@ class PilotCompatManifestTests(unittest.TestCase):
         still = [item for item in data["workarounds"] if item["still_required_on_pinned"]]
         self.assertGreaterEqual(len(still), 8)
 
-    def test_canary_release_is_newer_than_pin(self):
+    def test_environment_tracks_the_newest_pilot_release(self):
         toolchain = tomllib.loads(
             (Path(__file__).resolve().parents[1] / "toolchain.toml").read_text()
         )
-        pinned = toolchain["pilot"]["version"]
-        canary = toolchain["pilot"]["canary_version"]
-        self.assertNotEqual(pinned, canary)
-        self.assertTrue(pinned.startswith("v0."))
-        self.assertTrue(canary.startswith("v0."))
+        self.assertEqual(toolchain["pilot"]["version"], "latest")
+        self.assertNotIn("canary_version", toolchain["pilot"])

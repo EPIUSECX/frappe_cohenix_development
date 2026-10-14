@@ -104,13 +104,19 @@ def run_checks(settings: Settings) -> list[Check]:
     installed = installed_pilot_version(settings) if pilot_ok else "missing"
     if pilot_ok and installed != settings.pilot_version and settings.pilot_version != "latest":
         pilot_ok = False
+    if settings.pilot_version == "latest":
+        pilot_hint = "Run `devctl sync` to install the current Pilot release."
+        pilot_detail = f"{installed} (tracks latest)" if pilot_ok else installed
+    else:
+        pilot_hint = f"Run `devctl sync`. Requested release is {settings.pilot_version}."
+        pilot_detail = installed
     checks.append(
         Check(
             "pilot",
             "Pilot",
             pilot_ok,
-            installed,
-            f"Run `devctl sync`. Pinned release is {settings.pilot_version}. Do not set PILOT_VERSION=latest.",
+            pilot_detail,
+            pilot_hint,
         )
     )
 

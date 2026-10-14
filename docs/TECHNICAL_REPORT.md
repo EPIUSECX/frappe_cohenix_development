@@ -63,8 +63,9 @@ were not invented here.
 ## What remains intentionally unchanged
 
 - Pilot is still the bench manager. Classic Bench is not used as a replacement.
-- Pinned Pilot release remains **v0.0.23-pre-alpha** until the canary workflow
-  proves a newer tag. v0.0.55-pre-alpha is recorded as `canary_version` only.
+- Pilot tracks the newest GitHub release. `devctl sync` upgrades the install
+  and keeps benches. `config/pilot-compat.toml` records the last audited
+  workarounds; it is not a version pin.
 - Every installer workaround that still applies on v0.0.23 (and, except
   top-level `packaging`, on v0.0.55) is kept. See `config/pilot-compat.toml`.
 - Development passwords stay `admin` / `123` and are overridable.
@@ -89,7 +90,7 @@ were not invented here.
 | `bench --site X install-app` / Pilot `install-app` leave running web stale | `devctl reload` + bench/pilot shims write `pids/reload.request` (not a full stop) |
 | `VERSION=dev` would get full history; we will not lie about the version | Deepen workaround kept |
 
-Do not set `PILOT_VERSION=latest` on the normal path.
+`PILOT_VERSION=latest` is the normal path. An explicit tag freezes one release.
 
 ## Test results
 
@@ -217,8 +218,8 @@ in the VS Code / Cursor Dev Container log while postCreate/postStart run.
 
 1. Run the image workflow on `version-16_cohenix` so GHCR receives the first
    multi-arch `v16` tag.
-2. Promote Pilot only after a green canary report for v0.0.55-pre-alpha (or
-   newer) and a human review of `config/pilot-compat.toml`.
+2. Re-audit `config/pilot-compat.toml` when a Pilot release removes a
+   workaround. Sync already installs that release; the manifest does not.
 3. Add Codespaces machine prebuilds once the published image exists.
 4. If Cohenix private app URLs should replace public Frappe remotes in a
    profile, put them in `config/profiles.toml` — do not invent names.

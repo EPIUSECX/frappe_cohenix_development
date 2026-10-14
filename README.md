@@ -203,14 +203,15 @@ Non-interactive sessions require `--yes`. CI never prompts.
 
 ## Updating Pilot
 
-The pinned release is `toolchain.toml` → `[pilot].version`. It is **not**
-`latest`.
+`devctl sync` installs the newest [Pilot release](https://github.com/frappe/pilot/releases),
+including pre-releases. A newer tag replaces the Pilot install and leaves
+benches in place. The download is checked against the sha256 digest GitHub
+publishes on the release asset. When GitHub says the release list has not
+changed, sync keeps the installed release.
 
-1. Put the candidate tag in `[pilot].canary_version` (and its SHA256).
-2. Wait for `.github/workflows/pilot-canary.yml` (Monday schedule or
-   workflow_dispatch).
-3. If the canary smoke test passes, bump `[pilot].version` and `sha256` in a
-   reviewable commit. Do not auto-promote.
+Set `PILOT_VERSION` to an explicit tag only when a release must stay frozen.
+An existing `.devcontainer/.env` that still sets an old tag, such as
+`PILOT_VERSION=v0.0.23-pre-alpha`, keeps that release until the line is removed.
 
 ## Updating runtime versions
 

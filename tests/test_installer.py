@@ -164,10 +164,15 @@ class CliTests(unittest.TestCase):
         for name in ("sync", "doctor", "verify", "status", "start", "reload", "reset"):
             self.assertIn(name, text)
 
-    def test_latest_pilot_is_rejected(self):
-        with mock.patch.dict(os.environ, {"PILOT_VERSION": "latest"}, clear=False):
-            with self.assertRaises(ConfigError):
-                settings_from_env()
+    def test_latest_pilot_is_the_default(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PILOT_VERSION", None)
+            os.environ.pop("COHENIX_ALLOW_PILOT_LATEST", None)
+            self.assertEqual(settings_from_env().pilot_version, "latest")
+
+    def test_explicit_pilot_release_can_still_be_frozen(self):
+        with mock.patch.dict(os.environ, {"PILOT_VERSION": "v0.0.23-pre-alpha"}, clear=False):
+            self.assertEqual(settings_from_env().pilot_version, "v0.0.23-pre-alpha")
 
     def test_reset_without_yes_fails_noninteractive(self):
         settings = settings_from_env({"yes": False, "pilot_dir": "/tmp/pilot-test"})
