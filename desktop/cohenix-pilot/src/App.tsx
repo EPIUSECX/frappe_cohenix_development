@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen as tauriListen } from "@tauri-apps/api/event";
 import type { AppState, ProgressEvent } from "./lib/api";
 import { getState } from "./lib/api";
+import { isTauriRuntime, mockListen } from "./lib/mockBridge";
 import { WelcomeWizard } from "./pages/WelcomeWizard";
 import { HomePage } from "./pages/HomePage";
 import { EnvironmentsPage } from "./pages/EnvironmentsPage";
@@ -10,9 +11,17 @@ import { SettingsPage } from "./pages/SettingsPage";
 
 type Tab = "home" | "environments" | "logs" | "settings";
 
+function tabFromQuery(): Tab {
+  const tab = new URLSearchParams(window.location.search).get("tab");
+  if (tab === "environments" || tab === "logs" || tab === "settings" || tab === "home") {
+    return tab;
+  }
+  return "home";
+}
+
 export default function App() {
   const [state, setState] = useState<AppState | null>(null);
-  const [tab, setTab] = useState<Tab>("home");
+  const [tab, setTab] = useState<Tab>(tabFromQuery);
   const [progress, setProgress] = useState<ProgressEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,7 +41,8 @@ export default function App() {
   useEffect(() => {
     void refresh();
     let unlisten: (() => void) | undefined;
-    void listen<ProgressEvent>("cohenix-progress", (event) => {
+    const listenFn = isTauriRuntime() ? tauriListen : mockListen;
+    void listenFn("cohenix-progress", (event: { payload: ProgressEvent }) => {
       setProgress((prev) => [...prev.slice(-400), event.payload]);
     }).then((fn) => {
       unlisten = fn;

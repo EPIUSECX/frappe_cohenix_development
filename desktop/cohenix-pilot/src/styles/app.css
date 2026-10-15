@@ -303,11 +303,12 @@ p.lead {
 }
 
 .welcome-hero {
-  min-height: calc(100vh - 3rem);
   display: grid;
-  align-content: center;
-  gap: 1rem;
+  align-content: start;
+  gap: 0.75rem;
   max-width: 640px;
+  margin-bottom: 1rem;
+  padding-top: 0.5rem;
   animation: fade-up 600ms ease both;
 }
 

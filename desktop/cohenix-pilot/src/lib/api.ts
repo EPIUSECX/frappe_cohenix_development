@@ -1,4 +1,12 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { isTauriRuntime, mockInvoke } from "./mockBridge";
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isTauriRuntime()) {
+    return mockInvoke<T>(cmd, args);
+  }
+  return tauriInvoke<T>(cmd, args);
+}
 
 export type InstallStage =
   | "preflight"
