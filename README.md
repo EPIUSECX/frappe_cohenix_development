@@ -36,6 +36,50 @@ To skip automatic provision (a blank bench, or you want to drive `devctl`
 yourself), set `COHENIX_SKIP_AUTOSYNC=1` in `.devcontainer/.env`.
 `COHENIX_SKIP_DOCTOR=1` skips the health check only.
 
+## Dev Container troubleshooting
+
+### Docker Bake rejects the generated Dockerfile
+
+Docker Buildx 0.37.2 can fail during a VS Code Dev Containers Compose build
+with `additional privileges requested` and an `fs.read` path ending in
+`Dockerfile-with-features`. VS Code generates that file in a temporary
+directory outside the project. See the upstream report:
+[microsoft/vscode-remote-release#11896](https://github.com/microsoft/vscode-remote-release/issues/11896).
+
+Until the upstream issue is resolved, close all VS Code windows, then run
+this in PowerShell from the repository directory:
+
+```powershell
+$env:BUILDX_BAKE_ENTITLEMENTS_FS = "0"
+code .
+```
+
+Choose **Dev Containers: Rebuild and Reopen in Container**. This workaround
+disables Bake filesystem entitlement checks for the launched session. It
+must be set on the host before VS Code starts; setting it in `containerEnv`
+does not affect the build.
+
+To persist the workaround for your Windows user, run:
+
+```powershell
+[Environment]::SetEnvironmentVariable("BUILDX_BAKE_ENTITLEMENTS_FS", "0", "User")
+```
+
+Sign out of Windows and back in before launching VS Code normally. Remove
+the persistent workaround once using a version that fixes the upstream issue:
+
+```powershell
+[Environment]::SetEnvironmentVariable("BUILDX_BAKE_ENTITLEMENTS_FS", $null, "User")
+```
+
+### Setup shell script reports "not found"
+
+If `/workspace/scripts/on-create.sh` exists but running it reports
+`not found`, check for Windows CRLF line endings. The repository's
+`.gitattributes` requires LF for all shell scripts so Linux can read their
+interpreter paths. For an older checkout, convert the affected `.sh` files
+to LF in the editor, save, and rebuild the Dev Container.
+
 ## Performance
 
 The main win is **not compiling the toolchain on a developer machine**.
