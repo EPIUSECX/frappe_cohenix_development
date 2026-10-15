@@ -302,6 +302,67 @@ provisions Frappe v16 inside an isolated Ubuntu 24.04 WSL2 distribution
 Default app profile remains **hr**. Native WSL generates strong secrets (it does
 **not** use the Docker sample `admin` / `123` passwords).
 
-Build the NSIS installer on Windows CI
-(`.github/workflows/cohenix-pilot-windows.yml`). See
-[docs/windows-desktop/DEVELOPER.md](docs/windows-desktop/DEVELOPER.md).
+### Use a CI installer (Windows)
+
+1. Open the **Cohenix Pilot Windows** workflow on GitHub Actions (or the PR
+   checks for a branch that touches `desktop/cohenix-pilot/`).
+2. Download the **Cohenix-Pilot-Setup** artifact (`Cohenix-Pilot-Setup.exe` +
+   `.sha256`).
+3. Verify the checksum, run the installer, and launch **Cohenix Pilot**.
+4. Complete the first-run wizard (WSL enable may require a reboot; reopen the
+   app to resume).
+
+CI builds are **unsigned**. Do not treat them as production-signed releases.
+See [docs/windows-desktop/INSTALL.md](docs/windows-desktop/INSTALL.md).
+
+### Build locally (Windows 11 x64)
+
+Needs Node.js 22+, Rust stable, and WebView2 (usually preinstalled on Windows 11).
+
+```powershell
+git clone https://github.com/EPIUSECX/frappe_cohenix_development.git
+cd frappe_cohenix_development
+cd desktop\cohenix-pilot
+npm install
+npm run tauri build
+```
+
+The NSIS setup exe is under
+`desktop\cohenix-pilot\src-tauri\target\release\bundle\nsis\`.
+
+For a hot-reload desktop session:
+
+```powershell
+npm run tauri:dev
+```
+
+### After install
+
+| Action | Where |
+|---|---|
+| Start / Stop / Restart the stack | Home |
+| Open Pilot Admin | Home → `http://127.0.0.1:8002` |
+| Open Frappe Desk | Home → `http://cohenix.localhost:8000` |
+| Create a site / apply a profile | Environments |
+| Logs and redacted diagnostics | Logs |
+| Distro, ports, editor, update channel | Settings |
+
+Uninstalling the Windows app **keeps** the WSL distro and site data. Data
+removal is a separate, confirmed Settings action.
+
+### UI-only preview (Linux / macOS — no real WSL)
+
+```bash
+cd desktop/cohenix-pilot
+npm install
+npm run build && npm run preview -- --host 127.0.0.1 --port 4173
+```
+
+Open `http://127.0.0.1:4173/?mock=wizard` or `?mock=home`. This exercises the
+React UI with mock IPC only; it does not install Frappe or WSL.
+
+More detail:
+[INSTALL](docs/windows-desktop/INSTALL.md) ·
+[DEVELOPER](docs/windows-desktop/DEVELOPER.md) ·
+[SUPPORT](docs/windows-desktop/SUPPORT.md) ·
+[RELEASE](docs/windows-desktop/RELEASE.md).
