@@ -1,0 +1,113 @@
+name: Cohenix Pilot Windows
+
+on:
+  push:
+    branches: [version-16_cohenix, cursor/**]
+    paths:
+      - "desktop/cohenix-pilot/**"
+      - "scripts/windows/**"
+      - "scripts/native-wsl/**"
+      - "config/profiles.toml"
+      - "toolchain.toml"
+      - ".github/workflows/cohenix-pilot-windows.yml"
+  pull_request:
+    paths:
+      - "desktop/cohenix-pilot/**"
+      - "scripts/windows/**"
+      - "scripts/native-wsl/**"
+      - "config/profiles.toml"
+      - "toolchain.toml"
+      - ".github/workflows/cohenix-pilot-windows.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: cohenix-pilot-windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-and-python:
+    name: Frontend + native-wsl unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/cohenix-pilot/package.json
+      - name: Python native-wsl tests
+        run: python -m unittest discover -s tests/windows_desktop -p 'test*.py' -v
+      - name: Existing unit tests still pass
+        run: python -m unittest discover -s tests -p 'test*.py' -v
+      - name: Install frontend deps
+        working-directory: desktop/cohenix-pilot
+        run: npm install
+      - name: Frontend tests
+        working-directory: desktop/cohenix-pilot
+        run: npm test
+      - name: Frontend typecheck/build
+        working-directory: desktop/cohenix-pilot
+        run: npm run build
+      - name: Install Tauri Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust unit tests (validation/state/wsl)
+        working-directory: desktop/cohenix-pilot/src-tauri
+        run: cargo test
+
+  windows-installer:
+    name: Build NSIS installer (unsigned)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/cohenix-pilot/package.json
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Install frontend deps
+        working-directory: desktop/cohenix-pilot
+        run: npm install
+      - name: Build Tauri NSIS bundle
+        working-directory: desktop/cohenix-pilot
+        run: npm run tauri build
+      - name: Package artifact names + checksum
+        shell: pwsh
+        run: |
+          $dir = "desktop/cohenix-pilot/src-tauri/target/release/bundle/nsis"
+          if (-not (Test-Path $dir)) { throw "NSIS output directory missing: $dir" }
+          $setup = Get-ChildItem $dir -Filter "*setup.exe" | Select-Object -First 1
+          if (-not $setup) { throw "No NSIS setup.exe found under $dir" }
+          $outDir = "artifacts"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          Copy-Item $setup.FullName "$outDir/Cohenix-Pilot-Setup.exe"
+          $hash = (Get-FileHash "$outDir/Cohenix-Pilot-Setup.exe" -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "$outDir/Cohenix-Pilot-Setup.exe.sha256" -Value "$hash  Cohenix-Pilot-Setup.exe"
+          Set-Content -Path "$outDir/VERSION.txt" -Value "0.1.0"
+          Set-Content -Path "$outDir/SIGNING.txt" -Value @"
+          This CI artifact is NOT Authenticode-signed.
+          Do not distribute as a signed release. See docs/windows-desktop/RELEASE.md.
+          "@
+          Get-ChildItem $outDir
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cohenix-Pilot-Setup
+          path: artifacts/*
+          if-no-files-found: error
+
+  # Real WSL E2E smoke (clean VM, restart resume, etc.) is NOT run in CI yet.
+  # Track completion in docs/windows-desktop/RELEASE.md smoke checklist.

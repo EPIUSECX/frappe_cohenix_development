@@ -284,3 +284,24 @@ are not mounted by default; use GitHub credential forwarding.
 See [docs/MIGRATION.md](docs/MIGRATION.md) if you are coming from the previous
 installer-based container, and [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md)
 for the redesign notes and Pilot limitations.
+
+## Cohenix Pilot for Windows (native WSL2)
+
+Developers on Windows 11 can use **Cohenix Pilot**, a Tauri desktop app that
+provisions Frappe v16 inside an isolated Ubuntu 24.04 WSL2 distribution
+(**without Docker Desktop**). The Docker / Dev Container path above is unchanged.
+
+| Path | Purpose |
+|---|---|
+| `desktop/cohenix-pilot/` | Tauri 2 + React UI |
+| `scripts/windows/` | Preflight, WSL enable, distro import |
+| `scripts/native-wsl/` | Native Linux deps, Pilot pin, provision, health |
+| `docs/windows-desktop/` | Architecture, install, support, release, licensing |
+| `[pilot.native_wsl]` in `toolchain.toml` | Pilot pin for WSL (independent of the image pin) |
+
+Default app profile remains **hr**. Native WSL generates strong secrets (it does
+**not** use the Docker sample `admin` / `123` passwords).
+
+Build the NSIS installer on Windows CI
+(`.github/workflows/cohenix-pilot-windows.yml`). See
+[docs/windows-desktop/DEVELOPER.md](docs/windows-desktop/DEVELOPER.md).
