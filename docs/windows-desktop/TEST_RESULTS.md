@@ -7,11 +7,14 @@ lab results change.
 
 | Suite | Host | Result | Notes |
 |---|---|---|---|
-| `tests/` existing unit tests | Linux | Run in PR CI | Must stay green (Docker path) |
-| `tests/windows_desktop/` | Linux | Implemented | Profile resolve + native Pilot pin |
-| `desktop/cohenix-pilot` vitest | Linux | Implemented | Profile allowlist |
-| `src-tauri` cargo test | Linux CI | Workflow installs WebKit deps | Validation, state machine, redact |
-| NSIS `Cohenix-Pilot-Setup.exe` | `windows-latest` GHA | Workflow added | Artifact + SHA-256; **unsigned** |
+| `tests/` existing unit tests | Linux | **Passed** (PR CI + local) | Docker path unchanged |
+| `tests/windows_desktop/` | Linux | **Passed** | Profile resolve + native Pilot pin |
+| `desktop/cohenix-pilot` vitest | Linux | **Passed** | Profile allowlist |
+| Frontend production build | Linux | **Passed** | `npm run build` |
+| `src-tauri` cargo test | Linux | **Passed** (9 tests) | Validation, state machine, redact |
+| Cohenix Pilot Windows workflow | `windows-latest` | **Passed** | Run [38731018602](https://github.com/EPIUSECX/frappe_cohenix_development/actions/runs/38731018602) |
+| NSIS `Cohenix-Pilot-Setup.exe` | `windows-latest` GHA | **Built** | Artifact `Cohenix-Pilot-Setup` (~1.8 MiB); SHA-256 `68ce64325d3fb8dcb68506a310cb19dcb8ea8564b1ca570175b157308b7bf28c`; version `0.1.0`; **unsigned** |
+| Development image / existing CI | GHA | **Passed** | No Docker-path regression on this branch |
 
 ## Real Windows 11 + WSL2 smoke (required for compatibility claim)
 
