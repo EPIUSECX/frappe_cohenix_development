@@ -40,7 +40,7 @@ def get_args_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pilot-version",
         type=str,
-        default=os.getenv("PILOT_VERSION", "v0.0.23-pre-alpha"),
+        default=os.getenv("PILOT_VERSION", "latest"),
     )
     parser.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT)
     parser.add_argument("--socketio-port", type=int, default=DEFAULT_SOCKETIO_PORT)

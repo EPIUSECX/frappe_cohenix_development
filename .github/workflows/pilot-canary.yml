@@ -1,4 +1,4 @@
-name: Pilot canary
+name: Pilot latest
 
 on:
   schedule:
@@ -6,16 +6,15 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: pilot-canary
+  group: pilot-latest
   cancel-in-progress: true
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
-  canary:
-    name: Compare pinned and canary Pilot releases
+  latest:
+    name: Smoke test the current Pilot release
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -29,16 +28,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compatibility unit tests (pinned)
+      - name: Compatibility unit tests
         env:
           PILOT_VERSION: ${{ steps.toolchain.outputs.PILOT_VERSION }}
-        run: python -m unittest tests.test_pilot_compat tests.test_installer -v
-
-      - name: Resolve canary release
-        id: canary
-        run: |
-          echo "version=${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}" >> "$GITHUB_OUTPUT"
-          echo "Testing canary ${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}"
+        run: python -m unittest tests.test_pilot_compat tests.test_installer tests.test_pilot_release -v
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -50,24 +43,24 @@ jobs:
           file: images/v16/Dockerfile
           target: cohenix-v16
           load: true
-          tags: ghcr.io/epiusecx/cohenix-frappe-dev:canary
+          tags: ghcr.io/epiusecx/cohenix-frappe-dev:pilot-latest
           cache-from: type=gha,scope=cohenix-v16
           build-args: |
             PYTHON_VERSION=${{ steps.toolchain.outputs.PYTHON_VERSION }}
             NODE_VERSION=${{ steps.toolchain.outputs.NODE_VERSION }}
             YARN_VERSION=${{ steps.toolchain.outputs.YARN_VERSION }}
             UV_VERSION=${{ steps.toolchain.outputs.UV_VERSION }}
-            PILOT_VERSION=${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}
+            PILOT_VERSION=${{ steps.toolchain.outputs.PILOT_VERSION }}
             BENCH_REF=${{ steps.toolchain.outputs.BENCH_REF }}
             COHENIX_IMAGE_TAG=v16
 
-      - name: Smoke test canary Pilot
+      - name: Smoke test current Pilot
         id: smoke
         continue-on-error: true
         env:
-          COHENIX_DEV_IMAGE: ghcr.io/epiusecx/cohenix-frappe-dev:canary
-          PILOT_VERSION: ${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}
-          COMPOSE_PROJECT_NAME: cohenix-canary
+          COHENIX_DEV_IMAGE: ghcr.io/epiusecx/cohenix-frappe-dev:pilot-latest
+          PILOT_VERSION: ${{ steps.toolchain.outputs.PILOT_VERSION }}
+          COMPOSE_PROJECT_NAME: cohenix-pilot-latest
         run: |
           chmod +x tests/smoke/run-smoke.sh scripts/*.sh
           tests/smoke/run-smoke.sh
@@ -76,23 +69,17 @@ jobs:
         if: always()
         run: |
           {
-            echo "# Pilot canary report"
+            echo "# Pilot release smoke"
             echo
-            echo "- Pinned: \`${{ steps.toolchain.outputs.PILOT_VERSION }}\`"
-            echo "- Canary: \`${{ steps.toolchain.outputs.PILOT_CANARY_VERSION }}\`"
-            echo "- Canary smoke: ${{ steps.smoke.outcome }}"
+            echo "- Tracking: \`${{ steps.toolchain.outputs.PILOT_VERSION }}\`"
+            echo "- Smoke: ${{ steps.smoke.outcome }}"
             echo
-            echo "The pinned release is not updated automatically."
-            if [ "${{ steps.smoke.outcome }}" = "success" ]; then
-              echo "Canary passed. Review a pin bump in toolchain.toml if you want to promote it."
-            else
-              echo "Canary failed. Keep the pin at \`${{ steps.toolchain.outputs.PILOT_VERSION }}\`."
-              echo "Inspect the smoke-test logs for the first compatibility failure."
-            fi
-          } | tee pilot-canary-report.md
+            echo "Development environments install the newest Pilot release on \`devctl sync\`."
+            echo "This job reports whether that release still provisions. It does not change the toolchain."
+          } | tee pilot-latest-report.md
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: pilot-canary-report
-          path: pilot-canary-report.md
+          name: pilot-latest-report
+          path: pilot-latest-report.md

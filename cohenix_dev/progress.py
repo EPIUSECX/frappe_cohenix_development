@@ -64,12 +64,18 @@ def format_duration(seconds: float) -> str:
 
 
 def environment_rows(settings: Settings) -> list[tuple[str, str]]:
+    from cohenix_dev.runtime.pilot import installed_pilot_version
+
     versions = toolchain_versions()
+    pilot = settings.pilot_version
+    if pilot == "latest":
+        installed = installed_pilot_version(settings)
+        pilot = f"{installed} (tracks latest)" if installed != "unknown" else "latest"
     return [
         ("Profile", settings.profile),
         ("Python", settings.py_version or versions["python"]),
         ("Node", settings.node_version or versions["node"]),
-        ("Pilot", settings.pilot_version),
+        ("Pilot", pilot),
         ("Bench", settings.bench_name),
         ("Sites", ", ".join(settings.site_names())),
         ("Apps", ", ".join(spec.name for spec in settings.apps())),
