@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Cohenix Pilot",
+  "version": "0.1.0",
+  "identifier": "com.cohenix.pilot",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Cohenix Pilot",
+        "width": 1100,
+        "height": 760,
+        "resizable": true,
+        "minWidth": 880,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    },
+    "publisher": "Cohenix / EPI-USE",
+    "shortDescription": "Local Frappe development on native WSL2",
+    "longDescription": "Cohenix Pilot installs and manages a Frappe v16 development environment inside an isolated Ubuntu 24.04 WSL2 distribution without Docker Desktop."
+  },
+  "plugins": {}
+}
