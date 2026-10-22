@@ -9,16 +9,54 @@ christiaan.swart@epiuse.com
 
 ## New developer path
 
-You need Git, Docker, and VS Code (or Cursor) with the Dev Containers
-extension. You do **not** need a local Python or Node install, and you do
-**not** need to edit `/etc/hosts` for the default site.
+You need Git, [Colima](https://colima.run), and VS Code (or Cursor) with the
+Dev Containers extension. Colima is the Docker runtime on macOS, Linux, and
+Windows (WSL2). You do **not** need Docker Desktop, a local Python or Node
+install, or an `/etc/hosts` change for the default site.
 
 ```bash
 git clone https://github.com/EPIUSECX/frappe_cohenix_development.git
 cd frappe_cohenix_development
+bash scripts/colima-runtime.sh up
 ```
 
 Open the folder in VS Code or Cursor and choose **Reopen in Container**.
+The Dev Container `initializeCommand` runs `scripts/colima-runtime.sh up`
+again, so an already-running Colima VM is left in place.
+
+### macOS
+
+[Homebrew](https://brew.sh) installs Colima and the Docker client. Quit
+Docker Desktop if it is still installed so it does not keep the published
+ports. The script selects the `colima` Docker context.
+
+### Linux
+
+The script installs QEMU, Lima, Colima 0.10.3, and the Docker client. It
+does not install the `docker-ce` engine. Your user needs write access to
+`/dev/kvm`; the script uses sudo to add the group that owns that device.
+Open a new shell if it tells you the group is not active yet.
+
+### Windows (WSL2)
+
+Install Ubuntu from WSL2. Clone this repository on the Linux filesystem
+(`~/src/frappe_cohenix_development`), not under `/mnt/c`. From that Ubuntu
+shell run `bash scripts/colima-runtime.sh up`, then open the folder with
+Cursor or VS Code **Remote - WSL** and choose **Reopen in Container**.
+PowerShell and Git Bash cannot start Colima.
+
+If the VM is extremely slow, nested virtualization is off. In
+`%UserProfile%\.wslconfig` on the Windows side:
+
+```ini
+[wsl2]
+nestedVirtualization=true
+```
+
+Run `wsl --shutdown`, open Ubuntu again, and re-run the script.
+
+GitHub Actions and GitHub Codespaces already provide Docker Engine. The
+script does nothing in those environments.
 
 Wait until the Dev Container finishes **postStart** (the editor waits for it).
 That automatically runs:
@@ -135,8 +173,9 @@ docker compose -f .devcontainer/docker-compose.yml exec frappe devctl sync
 docker compose -f .devcontainer/docker-compose.yml exec frappe devctl doctor
 ```
 
-No Docker Desktop UI, no interactive installer, no host Python/Node, and no
-`/etc/hosts` change for `*.localhost` names.
+Colima (or the Docker Engine already present in CI and Codespaces) runs the
+containers. There is no Docker Desktop UI, no interactive installer, no host
+Python/Node, and no `/etc/hosts` change for `*.localhost` names.
 
 ## What you get
 

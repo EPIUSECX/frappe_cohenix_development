@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [version-16_cohenix, cursor/**]
+    branches: [version-16_cohenix, version-16_Colima, cursor/**]
   pull_request:
   workflow_dispatch:
 
