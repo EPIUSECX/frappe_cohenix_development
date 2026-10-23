@@ -43,6 +43,11 @@ def sibling_bench_ports(settings: Settings) -> dict[int, str]:
     return claimed
 
 
+# `pilot new` validates password strength and prompts on a tty; configure_bench()
+# overwrites it with the real admin password straight after.
+BOOTSTRAP_ADMIN_PASSWORD = "Bootstrap-Admin-1"
+
+
 def bench_ports(settings: Settings) -> dict[str, int]:
     _, bench_config = import_pilot_config(settings)
     offset = bench_config.current_port_offset(bench_root(settings) / "bench.toml")
@@ -76,7 +81,8 @@ def configure_bench(settings: Settings) -> None:
     with bench_config.open(root, mode="rw") as config:
         config.python_version = settings.py_version
         config.apps = [
-            app_config(name=spec.name, repo=spec.repo, branch=spec.branch) for spec in apps_for_bench(settings)
+            app_config(name=spec.name, repo=spec.repo, branch=spec.branch)
+            for spec in apps_for_bench(settings)
         ]
         config.http_port = ports["http"]
         config.socketio_port = ports["socketio"]
@@ -136,7 +142,15 @@ def init_bench_if_not_exist(settings: Settings) -> bool:
         cprint(f"Bench {settings.bench_name} is half-built, resuming ...", level=3)
     else:
         cprint(f"Creating bench {settings.bench_name} ...", level=2)
-        run_pilot(settings, "new", settings.bench_name, "--database", settings.db_type)
+        run_pilot(
+            settings,
+            "new",
+            settings.bench_name,
+            "--database",
+            settings.db_type,
+            "--admin-password",
+            BOOTSTRAP_ADMIN_PASSWORD,
+        )
     configure_bench(settings)
     cprint("Initialising bench (clone + install apps, this takes a while) ...", level=2)
     run_pilot(settings, "--bench", settings.bench_name, "init")
