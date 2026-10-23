@@ -391,6 +391,11 @@ colima_runtime_write_compose_wrapper() {
 	local quoted
 	quoted="$(colima_runtime_shell_single_quote "$real")"
 	mkdir -p "$(dirname "$dest")"
+	# dest is usually a symlink to the Homebrew binary; replace the link itself
+	# instead of writing through it onto the real (read-only) executable.
+	if [[ -L "$dest" ]]; then
+		rm -f "$dest"
+	fi
 	cat > "$dest" <<EOF
 #!/bin/sh
 # $(colima_runtime_compose_wrapper_marker)
