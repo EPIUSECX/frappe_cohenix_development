@@ -75,7 +75,13 @@ class EnvironmentSmokeTests(unittest.TestCase):
         self.assertIn("pong", body.lower())
 
     def test_06_socketio_port(self):
-        self.assertTrue(_live(9000), "Socket.IO is not listening on 9000")
+        # Frappe v16 serves realtime from the web process; 9000 only exists on older benches.
+        request = urllib.request.Request(
+            "http://127.0.0.1:8000/socket.io/?EIO=4&transport=polling",
+            headers={"Host": self.site},
+        )
+        with urllib.request.urlopen(request, timeout=15) as response:
+            self.assertIn('"sid"', response.read().decode())
 
     def test_07_redis_ports(self):
         listening = [port for port in (11000, 13000) if _live(port)]
