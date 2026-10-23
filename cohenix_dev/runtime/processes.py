@@ -13,6 +13,8 @@ from cohenix_dev.config import Settings
 from cohenix_dev.errors import CohenixError
 from cohenix_dev.output import cprint
 from cohenix_dev.progress import START_STAGES, StageReporter, environment_rows
+from cohenix_dev.provisioning.bench import link_bench_into_workspace
+from cohenix_dev.runtime.bench import ensure_test_dependencies
 from cohenix_dev.runtime.pilot import (
     bench_root,
     bench_subprocess_env,
@@ -43,6 +45,12 @@ def ensure_bench_config_files(settings: Settings) -> None:
         cprint("Bench config/ is incomplete, regenerating ...", level=2)
         run_pilot(settings, "--bench", settings.bench_name, "setup", "config", reload_after=False)
     ensure_scheduler_procfile(settings)
+    # sync skips its compat stage when the fingerprint matches, so make sure the
+    # dev extras `frappe serve --dev` needs (watchdog) exist on every start too.
+    ensure_test_dependencies(settings)
+    # The link is only made when the bench is initialised, so a resumed or
+    # interrupted first sync can leave a working bench that the editor can't see.
+    link_bench_into_workspace(settings)
 
 
 def ensure_scheduler_procfile(settings: Settings) -> None:
@@ -194,23 +202,37 @@ def _start_bench(settings: Settings, reporter: StageReporter) -> None:
             if not binary.exists():
                 raise CohenixError(f"Pilot is not installed at {binary}; run `devctl sync` first.")
             log = log_file(settings)
-            with log.open("ab") as handle:
-                process = subprocess.Popen(
-                    [python3(), str(binary), "-b", settings.bench_name, "start"],
-                    cwd=str(binary.parent.parent),
-                    stdout=handle,
-                    stderr=handle,
-                    stdin=subprocess.DEVNULL,
-                    start_new_session=True,
-                    env=bench_subprocess_env(settings),
+            for attempt in (1, 2):
+                # Only report this attempt's output: the log is append-only and
+                # its old tail comes from a previous run, which hides the cause.
+                offset = log.stat().st_size if log.exists() else 0
+                with log.open("ab") as handle:
+                    process = subprocess.Popen(
+                        [python3(), str(binary), "-b", settings.bench_name, "start"],
+                        cwd=str(binary.parent.parent),
+                        stdout=handle,
+                        stderr=handle,
+                        stdin=subprocess.DEVNULL,
+                        start_new_session=True,
+                        env=bench_subprocess_env(settings),
+                    )
+                pid_file(settings).write_text(f"{process.pid}\n", encoding="utf-8")
+                time.sleep(2)
+                if process.poll() is None:
+                    break
+                with log.open("rb") as handle:
+                    handle.seek(offset)
+                    tail = "\n".join(handle.read().decode(errors="ignore").splitlines()[-40:])
+                if attempt == 1:
+                    cprint(
+                        f"Pilot exited with code {process.returncode} on start, retrying once ...", level=2
+                    )
+                    time.sleep(3)
+                    continue
+                raise CohenixError(
+                    f"Pilot failed to start (exit code {process.returncode}). "
+                    f"Output from this attempt in {log}:\n{tail or '(none)'}"
                 )
-            pid_file(settings).write_text(f"{process.pid}\n", encoding="utf-8")
-            time.sleep(2)
-            if process.poll() is not None:
-                tail = ""
-                if log.exists():
-                    tail = "\n".join(log.read_text(errors="ignore").splitlines()[-40:])
-                raise CohenixError(f"Pilot failed to start. Recent output from {log}:\n{tail}")
             cprint(f"Pilot bench {settings.bench_name} started as PID {process.pid} (log: {log}).", level=2)
     with reporter.stage("Start scheduler"):
         ensure_scheduler_running(settings)
