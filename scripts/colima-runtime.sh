@@ -288,16 +288,138 @@ colima_runtime_install_macos() {
 		echo "Homebrew is required on macOS. Install it from https://brew.sh and re-run this script." >&2
 		return 1
 	fi
-	brew install colima docker docker-compose docker-buildx
-	mkdir -p "${HOME}/.docker/cli-plugins"
+	if ! command -v colima >/dev/null 2>&1 \
+		|| ! command -v docker >/dev/null 2>&1 \
+		|| ! docker compose version >/dev/null 2>&1 \
+		|| ! docker buildx version >/dev/null 2>&1; then
+		brew install colima docker docker-compose docker-buildx
+	fi
 	local prefix
 	prefix="$(brew --prefix)"
-	if [[ -x "${prefix}/opt/docker-compose/bin/docker-compose" ]]; then
-		ln -sfn "${prefix}/opt/docker-compose/bin/docker-compose" "${HOME}/.docker/cli-plugins/docker-compose"
-	fi
+	mkdir -p "${HOME}/.docker/cli-plugins"
+	# Compose itself is replaced by the entitlement wrapper after install.
 	if [[ -x "${prefix}/opt/docker-buildx/bin/docker-buildx" ]]; then
 		ln -sfn "${prefix}/opt/docker-buildx/bin/docker-buildx" "${HOME}/.docker/cli-plugins/docker-buildx"
 	fi
+}
+
+# Buildx 0.37.2 and later refuses a Dockerfile that lives outside the Compose
+# project. VS Code writes that file under a temporary directory
+# (Dockerfile-with-features) and does not pass --allow=fs.read. A Compose
+# plugin wrapper sets BUILDX_BAKE_ENTITLEMENTS_FS=0 for every `docker compose`
+# invocation, which is the upstream workaround:
+# https://github.com/microsoft/vscode-remote-release/issues/11896
+colima_runtime_compose_wrapper_marker() {
+	printf '%s\n' "cohenix-buildx-entitlements"
+}
+
+colima_runtime_docker_config_dir() {
+	if [[ -n "${DOCKER_CONFIG:-}" ]]; then
+		printf '%s\n' "$DOCKER_CONFIG"
+	else
+		printf '%s\n' "${HOME}/.docker"
+	fi
+}
+
+colima_runtime_shell_single_quote() {
+	local value="$1"
+	value="${value//\'/\'\\\'\'}"
+	printf "'%s'" "$value"
+}
+
+colima_runtime_file_is_wrapper() {
+	local path="$1"
+	[[ -f "$path" && ! -L "$path" ]] || return 1
+	grep -q "$(colima_runtime_compose_wrapper_marker)" "$path"
+}
+
+colima_runtime_compose_search_paths() {
+	if [[ -n "${COLIMA_COMPOSE_PLUGIN_OVERRIDE:-}" ]]; then
+		printf '%s\n' "$COLIMA_COMPOSE_PLUGIN_OVERRIDE"
+	fi
+	local prefix=""
+	if command -v brew >/dev/null 2>&1; then
+		prefix="$(brew --prefix 2>/dev/null || true)"
+	fi
+	if [[ -n "$prefix" ]]; then
+		printf '%s\n' \
+			"${prefix}/opt/docker-compose/bin/docker-compose" \
+			"${prefix}/lib/docker/cli-plugins/docker-compose"
+	fi
+	printf '%s\n' \
+		/opt/homebrew/opt/docker-compose/bin/docker-compose \
+		/opt/homebrew/lib/docker/cli-plugins/docker-compose \
+		/home/linuxbrew/.linuxbrew/opt/docker-compose/bin/docker-compose \
+		/home/linuxbrew/.linuxbrew/lib/docker/cli-plugins/docker-compose \
+		/usr/local/lib/docker/cli-plugins/docker-compose \
+		/usr/local/libexec/docker/cli-plugins/docker-compose \
+		/usr/lib/docker/cli-plugins/docker-compose \
+		/usr/libexec/docker/cli-plugins/docker-compose
+}
+
+colima_runtime_find_compose_plugin() {
+	local dest="$1"
+	local candidate target
+	while IFS= read -r candidate; do
+		[[ -n "$candidate" && -x "$candidate" ]] || continue
+		[[ "$candidate" == "$dest" ]] && continue
+		if colima_runtime_file_is_wrapper "$candidate"; then
+			continue
+		fi
+		printf '%s\n' "$candidate"
+		return 0
+	done <<EOF
+$(colima_runtime_compose_search_paths)
+EOF
+	if [[ -L "$dest" ]]; then
+		target="$(readlink "$dest")"
+		case "$target" in
+		/*) ;;
+		*) target="$(cd "$(dirname "$dest")" && pwd)/${target}" ;;
+		esac
+		if [[ -x "$target" ]] && ! colima_runtime_file_is_wrapper "$target"; then
+			printf '%s\n' "$target"
+			return 0
+		fi
+	fi
+	return 1
+}
+
+colima_runtime_write_compose_wrapper() {
+	local real="$1"
+	local dest="$2"
+	local quoted
+	quoted="$(colima_runtime_shell_single_quote "$real")"
+	mkdir -p "$(dirname "$dest")"
+	cat > "$dest" <<EOF
+#!/bin/sh
+# $(colima_runtime_compose_wrapper_marker)
+# Allows the Dev Container generated Dockerfile outside the build context.
+# Remove this wrapper once Compose passes --allow=fs.read for that file.
+if [ -z "\${BUILDX_BAKE_ENTITLEMENTS_FS+x}" ]; then
+	BUILDX_BAKE_ENTITLEMENTS_FS=0
+	export BUILDX_BAKE_ENTITLEMENTS_FS
+fi
+exec ${quoted} "\$@"
+EOF
+	chmod 755 "$dest"
+}
+
+colima_runtime_install_compose_wrapper() {
+	local config dest real
+	config="$(colima_runtime_docker_config_dir)"
+	dest="${config}/cli-plugins/docker-compose"
+	if [[ -e "$dest" && ! -L "$dest" ]] && ! colima_runtime_file_is_wrapper "$dest"; then
+		echo "Leaving the existing Compose plugin in place: $dest" >&2
+		echo "Set BUILDX_BAKE_ENTITLEMENTS_FS=0 in the environment that starts VS Code or Cursor." >&2
+		return 0
+	fi
+	if ! real="$(colima_runtime_find_compose_plugin "$dest")"; then
+		echo "Docker Compose plugin not found; skipping the Buildx entitlement wrapper." >&2
+		return 0
+	fi
+	colima_runtime_write_compose_wrapper "$real" "$dest"
+	echo "Compose will allow the Dev Container generated Dockerfile (BUILDX_BAKE_ENTITLEMENTS_FS=0)."
 }
 
 colima_runtime_install() {
@@ -411,6 +533,7 @@ colima_runtime_up() {
 		return 0
 	fi
 	colima_runtime_install "$platform"
+	colima_runtime_install_compose_wrapper
 	colima_runtime_prepare_kvm "$platform"
 	if command -v colima >/dev/null 2>&1 && colima status >/dev/null 2>&1; then
 		echo "Colima is already running."

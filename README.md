@@ -78,37 +78,36 @@ yourself), set `COHENIX_SKIP_AUTOSYNC=1` in `.devcontainer/.env`.
 
 ### Docker Bake rejects the generated Dockerfile
 
-Docker Buildx 0.37.2 can fail during a VS Code Dev Containers Compose build
-with `additional privileges requested` and an `fs.read` path ending in
-`Dockerfile-with-features`. VS Code generates that file in a temporary
-directory outside the project. See the upstream report:
+Docker Buildx 0.37.2 and later (including 0.38 with Compose 5.6) can fail
+while VS Code runs `docker compose build`, with `additional privileges
+requested` and an `fs.read` path ending in `Dockerfile-with-features`. VS
+Code writes that file in a temporary directory outside the project. Colima
+itself is already up when this happens. See the upstream report:
 [microsoft/vscode-remote-release#11896](https://github.com/microsoft/vscode-remote-release/issues/11896).
 
-Until the upstream issue is resolved, close all VS Code windows, then run
-this in PowerShell from the repository directory:
+`bash scripts/colima-runtime.sh up` installs a user-level Compose plugin at
+`~/.docker/cli-plugins/docker-compose` that sets
+`BUILDX_BAKE_ENTITLEMENTS_FS=0` for Compose commands. The Dev Container
+`initializeCommand` runs that script before the build, on macOS, Linux, and
+Windows WSL2. Pull this branch and choose **Reopen in Container** again.
+The same editor session picks up the plugin; you do not set the variable in
+`containerEnv`.
+
+If that plugin path already holds a different Compose program, the script
+leaves it alone. Set the variable in the environment that launches the
+editor, then fully quit and reopen it:
+
+```bash
+# macOS (zsh) or Linux
+export BUILDX_BAKE_ENTITLEMENTS_FS=0
+```
 
 ```powershell
+# Windows, only if the editor is not using Remote - WSL
 $env:BUILDX_BAKE_ENTITLEMENTS_FS = "0"
-code .
 ```
 
-Choose **Dev Containers: Rebuild and Reopen in Container**. This workaround
-disables Bake filesystem entitlement checks for the launched session. It
-must be set on the host before VS Code starts; setting it in `containerEnv`
-does not affect the build.
-
-To persist the workaround for your Windows user, run:
-
-```powershell
-[Environment]::SetEnvironmentVariable("BUILDX_BAKE_ENTITLEMENTS_FS", "0", "User")
-```
-
-Sign out of Windows and back in before launching VS Code normally. Remove
-the persistent workaround once using a version that fixes the upstream issue:
-
-```powershell
-[Environment]::SetEnvironmentVariable("BUILDX_BAKE_ENTITLEMENTS_FS", $null, "User")
-```
+An explicit `BUILDX_BAKE_ENTITLEMENTS_FS=1` still wins over the plugin.
 
 ### Setup shell script reports "not found"
 

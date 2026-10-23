@@ -14,9 +14,10 @@ bash scripts/colima-runtime.sh up
 ```
 
 Quit Docker Desktop so it does not keep the same ports. The script points
-the Docker client at the `colima` context. On Windows, run that command
-inside Ubuntu on WSL2 and open the folder with Remote - WSL. Details are
-in the README.
+the Docker client at the `colima` context and installs a Compose plugin
+that lets VS Code read its generated Dockerfile under Buildx 0.37.2 and
+later. On Windows, run that command inside Ubuntu on WSL2 and open the
+folder with Remote - WSL. Details are in the README.
 
 ## What you should do on an existing machine
 

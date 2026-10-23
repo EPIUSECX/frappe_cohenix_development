@@ -104,6 +104,95 @@ class ColimaRuntimeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Codespaces", result.stdout)
 
+    def test_compose_wrapper_allows_the_generated_dockerfile(self):
+        result = run_bash(
+            f"""
+            set -euo pipefail
+            tmp=$(mktemp -d)
+            trap 'rm -rf "$tmp"' EXIT
+            mkdir -p "$tmp/bin"
+            cat > "$tmp/bin/docker-compose" <<'FAKE'
+#!/bin/sh
+printf 'entitlement=%s\\n' "${{BUILDX_BAKE_ENTITLEMENTS_FS-unset}}"
+printf 'args=%s\\n' "$*"
+FAKE
+            chmod 755 "$tmp/bin/docker-compose"
+            export DOCKER_CONFIG="$tmp/config"
+            export COLIMA_COMPOSE_PLUGIN_OVERRIDE="$tmp/bin/docker-compose"
+            source "{SCRIPT}"
+            colima_runtime_install_compose_wrapper
+            wrapper="$DOCKER_CONFIG/cli-plugins/docker-compose"
+            test -x "$wrapper"
+            test ! -L "$wrapper"
+            grep -q cohenix-buildx-entitlements "$wrapper"
+            "$wrapper" compose build
+            BUILDX_BAKE_ENTITLEMENTS_FS=1 "$wrapper" compose build
+            """
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("entitlement=0", result.stdout)
+        self.assertIn("entitlement=1", result.stdout)
+        self.assertEqual(result.stdout.count("args=compose build"), 2)
+        self.assertIn("BUILDX_BAKE_ENTITLEMENTS_FS=0", result.stdout)
+
+    def test_compose_wrapper_leaves_a_custom_plugin(self):
+        result = run_bash(
+            f"""
+            set -euo pipefail
+            tmp=$(mktemp -d)
+            trap 'rm -rf "$tmp"' EXIT
+            export DOCKER_CONFIG="$tmp/config"
+            mkdir -p "$DOCKER_CONFIG/cli-plugins"
+            printf 'custom-plugin\\n' > "$DOCKER_CONFIG/cli-plugins/docker-compose"
+            source "{SCRIPT}"
+            colima_runtime_install_compose_wrapper
+            cat "$DOCKER_CONFIG/cli-plugins/docker-compose"
+            """
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("custom-plugin", result.stdout)
+        self.assertIn("Leaving the existing Compose plugin", result.stderr)
+        self.assertNotIn("cohenix-buildx-entitlements", result.stdout)
+
+    def test_wrapper_build_reads_a_dockerfile_outside_the_context(self):
+        if subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+            self.skipTest("docker daemon is not available")
+        result = run_bash(
+            f"""
+            set -euo pipefail
+            tmp=$(mktemp -d)
+            plugins="${{HOME}}/.docker/cli-plugins"
+            mkdir -p "$plugins" "$tmp/ctx" "$tmp/outside"
+            backup=""
+            if [[ -e "$plugins/docker-compose" || -L "$plugins/docker-compose" ]]; then
+                backup="$tmp/docker-compose.bak"
+                mv "$plugins/docker-compose" "$backup"
+            fi
+            cleanup() {{
+                rm -f "$plugins/docker-compose"
+                if [[ -n "$backup" && -e "$backup" ]]; then
+                    mv "$backup" "$plugins/docker-compose"
+                fi
+                docker image rm entitlement-test:local >/dev/null 2>&1 || true
+                rm -rf "$tmp"
+            }}
+            trap cleanup EXIT
+            printf 'FROM scratch\\n' > "$tmp/outside/Dockerfile"
+            cat > "$tmp/ctx/compose.yml" <<'EOF'
+services:
+  app:
+    image: entitlement-test:local
+    build:
+      context: .
+      dockerfile: ../outside/Dockerfile
+EOF
+            source "{SCRIPT}"
+            colima_runtime_install_compose_wrapper
+            docker compose -f "$tmp/ctx/compose.yml" build
+            """
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
     def test_dry_run_prints_start_for_linux_and_macos(self):
         for platform in ("linux", "wsl", "macos"):
             with self.subTest(platform=platform):
