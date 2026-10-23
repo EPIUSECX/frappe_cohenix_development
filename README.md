@@ -72,6 +72,19 @@ the persistent workaround once using a version that fixes the upstream issue:
 [Environment]::SetEnvironmentVariable("BUILDX_BAKE_ENTITLEMENTS_FS", $null, "User")
 ```
 
+To apply the workaround on macOS, set the variable for the login session and
+fully quit VS Code (Cmd+Q; closing the window is not enough, the main process
+keeps its old environment), then reopen it:
+
+```bash
+launchctl setenv BUILDX_BAKE_ENTITLEMENTS_FS 0
+```
+
+This lasts until the next reboot. Alternatively launch VS Code from a shell
+that has exported the variable: `export BUILDX_BAKE_ENTITLEMENTS_FS=0; code .`.
+Buildx 0.38.1 is also affected. Undo it with
+`launchctl unsetenv BUILDX_BAKE_ENTITLEMENTS_FS`.
+
 ### Setup shell script reports "not found"
 
 If `/workspace/scripts/on-create.sh` exists but running it reports
