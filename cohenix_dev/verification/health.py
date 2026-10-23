@@ -43,6 +43,8 @@ def inspect_processes(settings: Settings) -> ProcessHealth:
     except Exception:  # noqa: BLE001
         return health
     health.web = port_is_live(http_port)
+    # Frappe v16 serves realtime from the web process; the standalone Node
+    # Socket.IO server on socketio_port is gone. Accept either.
     health.socketio = port_is_live(socketio_port)
     health.redis = port_is_live(cache_port) and port_is_live(queue_port)
     health.workers = _pgrep("frappe.utils.background_jobs") or _pgrep("bench_helper frappe worker")
@@ -55,7 +57,22 @@ def inspect_processes(settings: Settings) -> ProcessHealth:
         health.http_ok, health.http_detail = probe_http(http_port, settings.site_name)
     if health.socketio:
         health.realtime_detail = f"listening on {socketio_port}"
+    elif health.web and probe_realtime(http_port, settings.site_name):
+        health.socketio = True
+        health.realtime_detail = f"served by the web process on {http_port}"
     return health
+
+
+def probe_realtime(port: int, site_name: str) -> bool:
+    """True when the web process answers a Socket.IO (engine.io v4) handshake."""
+    url = f"http://127.0.0.1:{port}/socket.io/?EIO=4&transport=polling"
+    request = urllib.request.Request(url, headers={"Host": site_name})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+            body = response.read().decode("utf-8", errors="replace")
+            return response.status == 200 and '"sid"' in body
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def probe_http(port: int, site_name: str) -> tuple[bool, str]:

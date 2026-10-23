@@ -4,6 +4,21 @@ This branch replaces `installer.py` as the daily driver with `devctl`, moves
 the toolchain into a prebuilt image, and switches the default database to
 MariaDB 11.8.
 
+## Docker Desktop to Colima
+
+Local development uses Colima on macOS, Linux, and Windows WSL2. From the
+repository root:
+
+```bash
+bash scripts/colima-runtime.sh up
+```
+
+Quit Docker Desktop so it does not keep the same ports. The script points
+the Docker client at the `colima` context and installs a Compose plugin
+that lets VS Code read its generated Dockerfile under Buildx 0.37.2 and
+later. On Windows, run that command inside Ubuntu on WSL2 and open the
+folder with Remote - WSL. Details are in the README.
+
 ## What you should do on an existing machine
 
 1. Commit or stash work in any app checkouts you care about. Default app

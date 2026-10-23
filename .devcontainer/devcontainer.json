@@ -125,6 +125,7 @@
       }
     }
   },
+  "initializeCommand": "bash scripts/colima-runtime.sh up",
   "onCreateCommand": "/workspace/scripts/on-create.sh",
   "postCreateCommand": "/workspace/scripts/post-create.sh",
   "postStartCommand": "/workspace/scripts/start-dev.sh",

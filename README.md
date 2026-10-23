@@ -9,16 +9,54 @@ christiaan.swart@epiuse.com
 
 ## New developer path
 
-You need Git, Docker, and VS Code (or Cursor) with the Dev Containers
-extension. You do **not** need a local Python or Node install, and you do
-**not** need to edit `/etc/hosts` for the default site.
+You need Git, [Colima](https://colima.run), and VS Code (or Cursor) with the
+Dev Containers extension. Colima is the Docker runtime on macOS, Linux, and
+Windows (WSL2). You do **not** need Docker Desktop, a local Python or Node
+install, or an `/etc/hosts` change for the default site.
 
 ```bash
 git clone https://github.com/EPIUSECX/frappe_cohenix_development.git
 cd frappe_cohenix_development
+bash scripts/colima-runtime.sh up
 ```
 
 Open the folder in VS Code or Cursor and choose **Reopen in Container**.
+The Dev Container `initializeCommand` runs `scripts/colima-runtime.sh up`
+again, so an already-running Colima VM is left in place.
+
+### macOS
+
+[Homebrew](https://brew.sh) installs Colima and the Docker client. Quit
+Docker Desktop if it is still installed so it does not keep the published
+ports. The script selects the `colima` Docker context.
+
+### Linux
+
+The script installs QEMU, Lima, Colima 0.10.3, and the Docker client. It
+does not install the `docker-ce` engine. Your user needs write access to
+`/dev/kvm`; the script uses sudo to add the group that owns that device.
+Open a new shell if it tells you the group is not active yet.
+
+### Windows (WSL2)
+
+Install Ubuntu from WSL2. Clone this repository on the Linux filesystem
+(`~/src/frappe_cohenix_development`), not under `/mnt/c`. From that Ubuntu
+shell run `bash scripts/colima-runtime.sh up`, then open the folder with
+Cursor or VS Code **Remote - WSL** and choose **Reopen in Container**.
+PowerShell and Git Bash cannot start Colima.
+
+If the VM is extremely slow, nested virtualization is off. In
+`%UserProfile%\.wslconfig` on the Windows side:
+
+```ini
+[wsl2]
+nestedVirtualization=true
+```
+
+Run `wsl --shutdown`, open Ubuntu again, and re-run the script.
+
+GitHub Actions and GitHub Codespaces already provide Docker Engine. The
+script does nothing in those environments.
 
 Wait until the Dev Container finishes **postStart** (the editor waits for it).
 That automatically runs:
@@ -40,37 +78,49 @@ yourself), set `COHENIX_SKIP_AUTOSYNC=1` in `.devcontainer/.env`.
 
 ### Docker Bake rejects the generated Dockerfile
 
-Docker Buildx 0.37.2 can fail during a VS Code Dev Containers Compose build
-with `additional privileges requested` and an `fs.read` path ending in
-`Dockerfile-with-features`. VS Code generates that file in a temporary
-directory outside the project. See the upstream report:
+Docker Buildx 0.37.2 and later (including 0.38 with Compose 5.6) can fail
+while VS Code runs `docker compose build`, with `additional privileges
+requested` and an `fs.read` path ending in `Dockerfile-with-features`. VS
+Code writes that file in a temporary directory outside the project. Colima
+itself is already up when this happens. See the upstream report:
 [microsoft/vscode-remote-release#11896](https://github.com/microsoft/vscode-remote-release/issues/11896).
 
-Until the upstream issue is resolved, close all VS Code windows, then run
-this in PowerShell from the repository directory:
+`bash scripts/colima-runtime.sh up` installs a user-level Compose plugin at
+`~/.docker/cli-plugins/docker-compose` that sets
+`BUILDX_BAKE_ENTITLEMENTS_FS=0` for Compose commands. The Dev Container
+`initializeCommand` runs that script before the build, on macOS, Linux, and
+Windows WSL2. Pull this branch and choose **Reopen in Container** again.
+The same editor session picks up the plugin; you do not set the variable in
+`containerEnv`.
+
+If that plugin path already holds a different Compose program, the script
+leaves it alone. Set the variable in the environment that launches the
+editor, then fully quit and reopen it:
+
+```bash
+# macOS (zsh) or Linux
+export BUILDX_BAKE_ENTITLEMENTS_FS=0
+```
 
 ```powershell
+# Windows, only if the editor is not using Remote - WSL
 $env:BUILDX_BAKE_ENTITLEMENTS_FS = "0"
-code .
 ```
 
-Choose **Dev Containers: Rebuild and Reopen in Container**. This workaround
-disables Bake filesystem entitlement checks for the launched session. It
-must be set on the host before VS Code starts; setting it in `containerEnv`
-does not affect the build.
+An explicit `BUILDX_BAKE_ENTITLEMENTS_FS=1` still wins over the plugin.
 
-To persist the workaround for your Windows user, run:
+To apply the workaround on macOS, set the variable for the login session and
+fully quit VS Code (Cmd+Q; closing the window is not enough, the main process
+keeps its old environment), then reopen it:
 
-```powershell
-[Environment]::SetEnvironmentVariable("BUILDX_BAKE_ENTITLEMENTS_FS", "0", "User")
+```bash
+launchctl setenv BUILDX_BAKE_ENTITLEMENTS_FS 0
 ```
 
-Sign out of Windows and back in before launching VS Code normally. Remove
-the persistent workaround once using a version that fixes the upstream issue:
-
-```powershell
-[Environment]::SetEnvironmentVariable("BUILDX_BAKE_ENTITLEMENTS_FS", $null, "User")
-```
+This lasts until the next reboot. Alternatively launch VS Code from a shell
+that has exported the variable: `export BUILDX_BAKE_ENTITLEMENTS_FS=0; code .`.
+Buildx 0.38.1 is also affected. Undo it with
+`launchctl unsetenv BUILDX_BAKE_ENTITLEMENTS_FS`.
 
 ### Setup shell script reports "not found"
 
@@ -135,8 +185,9 @@ docker compose -f .devcontainer/docker-compose.yml exec frappe devctl sync
 docker compose -f .devcontainer/docker-compose.yml exec frappe devctl doctor
 ```
 
-No Docker Desktop UI, no interactive installer, no host Python/Node, and no
-`/etc/hosts` change for `*.localhost` names.
+Colima (or the Docker Engine already present in CI and Codespaces) runs the
+containers. There is no Docker Desktop UI, no interactive installer, no host
+Python/Node, and no `/etc/hosts` change for `*.localhost` names.
 
 ## What you get
 

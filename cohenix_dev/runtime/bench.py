@@ -16,6 +16,10 @@ FRAPPE_TEST_PACKAGES = [
     "freezegun~=1.5.1",
     "Faker~=18.10.1",
 ]
+# `frappe serve --dev` (developer mode) exits unless watchdog is importable;
+# it ships in frappe's `dev` extra, which Pilot does not install.
+FRAPPE_DEV_PACKAGES = ["watchdog~=6.0.0"]
+BENCH_EXTRA_PACKAGES = [*FRAPPE_TEST_PACKAGES, *FRAPPE_DEV_PACKAGES]
 
 
 def ensure_classic_bench_compat(settings: Settings) -> None:
@@ -38,15 +42,15 @@ def ensure_test_dependencies(settings: Settings) -> None:
     if not python.is_file():
         return
     probe = subprocess.run(
-        [str(python), "-c", "import hypothesis, responses, freezegun, faker"],
+        [str(python), "-c", "import hypothesis, responses, freezegun, faker, watchdog"],
         capture_output=True,
         check=False,
     )
     if probe.returncode == 0:
         return
-    cprint("Installing Frappe test extras into the bench env (hypothesis) ...", level=3)
+    cprint("Installing Frappe test and dev extras into the bench env (hypothesis, watchdog) ...", level=3)
     run_command(
-        ["uv", "pip", "install", "--python", str(python), *FRAPPE_TEST_PACKAGES],
+        ["uv", "pip", "install", "--python", str(python), *BENCH_EXTRA_PACKAGES],
         env=bench_subprocess_env(settings),
     )
 
