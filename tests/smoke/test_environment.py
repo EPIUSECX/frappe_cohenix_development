@@ -75,7 +75,19 @@ class EnvironmentSmokeTests(unittest.TestCase):
         self.assertIn("pong", body.lower())
 
     def test_06_socketio_port(self):
-        self.assertTrue(_live(9000), "Socket.IO is not listening on 9000")
+        # Lite mode serves realtime from the web process; otherwise a separate process uses 9000.
+        for port in (8000, 9000):
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{port}/socket.io/?EIO=4&transport=polling",
+                headers={"Host": self.site},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    if response.status == 200:
+                        return
+            except OSError:
+                continue
+        self.fail("Socket.IO answers on neither 8000 (lite mode) nor 9000")
 
     def test_07_redis_ports(self):
         listening = [port for port in (11000, 13000) if _live(port)]

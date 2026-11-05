@@ -73,9 +73,13 @@ def run_checks(settings: Settings) -> list[Check]:
         )
     )
     yarn_ok, yarn_detail = _ok("yarn")
-    checks.append(Check("runtime", "Yarn", yarn_ok, yarn_detail, "npm install -g yarn@1.22.22 inside the image."))
+    checks.append(
+        Check("runtime", "Yarn", yarn_ok, yarn_detail, "npm install -g yarn@1.22.22 inside the image.")
+    )
     uv_ok, uv_detail = _ok("uv")
-    checks.append(Check("runtime", "uv", uv_ok, uv_detail, "The image should already contain the pinned uv release."))
+    checks.append(
+        Check("runtime", "uv", uv_ok, uv_detail, "The image should already contain the pinned uv release.")
+    )
 
     db_ok = mariadb_can_connect(settings)
     db_detail = mariadb_version(settings) if db_ok else "cannot connect"
@@ -134,10 +138,14 @@ def run_checks(settings: Settings) -> list[Check]:
     for error in bench_layout_errors(settings):
         checks.append(Check("bench", "Layout", False, error, "Run `devctl sync` to repair the bench layout."))
     for error in site_config_errors(settings):
-        checks.append(Check("site", "Site config", False, error, "Run `devctl site create` or `devctl sync`."))
+        checks.append(
+            Check("site", "Site config", False, error, "Run `devctl site create` or `devctl sync`.")
+        )
     for error in collect_verify_errors(settings):
         if "site is missing" in error or "missing apps" in error:
-            checks.append(Check("apps", "Required apps", False, error, "Run `devctl sync` to finish site provisioning."))
+            checks.append(
+                Check("apps", "Required apps", False, error, "Run `devctl sync` to finish site provisioning.")
+            )
         elif "asset manifest" in error:
             checks.append(
                 Check(
@@ -166,7 +174,7 @@ def run_checks(settings: Settings) -> list[Check]:
                 "Socket.IO",
                 health.socketio,
                 health.realtime_detail or ("not listening" if not health.socketio else "ok"),
-                "Realtime shares the bench process set. Restart with `devctl restart`.",
+                "Lite mode serves realtime from the web process. Restart with `devctl restart`.",
             )
         )
         checks.append(
@@ -217,7 +225,8 @@ def run_checks(settings: Settings) -> list[Check]:
                 f"HTTP {settings.http_port}",
                 False,
                 "port is already in use before the bench exists",
-                "Another environment is bound to this port. Use Dev Container forwarding instead of host publish.",
+                "Another environment is bound to this port. "
+                "Use Dev Container forwarding instead of host publish.",
             )
         )
     return checks

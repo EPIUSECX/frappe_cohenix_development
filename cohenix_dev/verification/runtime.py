@@ -10,6 +10,7 @@ from cohenix_dev.output import cprint
 from cohenix_dev.provisioning.apps import apps_for_bench
 from cohenix_dev.provisioning.sites import site_installed_apps
 from cohenix_dev.runtime.pilot import bench_root, installed_pilot_version, pilot_bin
+from cohenix_dev.runtime.reloader import dev_reloader_missing
 from cohenix_dev.util import which
 
 
@@ -35,6 +36,8 @@ def collect_verify_errors(settings: Settings) -> list[str]:
         errors.append(f"bench manifest is missing: {root / 'bench.toml'}")
     if not (root / "apps" / "frappe").is_dir():
         errors.append("Frappe app checkout is missing")
+    if dev_reloader_missing(settings):
+        errors.append("watchdog is not installed in the bench env, so `frappe.runner --dev` will exit")
     if not (root / "sites" / "assets" / "assets.json").is_file():
         errors.append("built asset manifest is missing")
 

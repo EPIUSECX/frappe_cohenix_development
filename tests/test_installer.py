@@ -219,6 +219,84 @@ class InterpreterTests(unittest.TestCase):
             text = (root / "config" / "Procfile").read_text()
             self.assertEqual(text.count("schedule:"), 1)
 
+    def _reloader_bench(self, directory, reload_python=True):
+        root = Path(directory) / "benches" / "development-bench"
+        (root / "env" / "bin").mkdir(parents=True)
+        (root / "env" / "bin" / "python").write_text("#!/bin/sh\n")
+        (root / "bench.toml").write_text(f"[bench]\nreload_python = {str(reload_python).lower()}\n")
+        return root
+
+    def test_dev_reloader_is_installed_when_watchdog_is_missing(self):
+        from cohenix_dev.runtime import reloader
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._reloader_bench(directory)
+            settings = SimpleNamespace(bench_name="development-bench")
+            with (
+                mock.patch.object(reloader, "bench_root", return_value=root),
+                mock.patch.object(reloader, "watchdog_importable", return_value=False),
+                mock.patch.object(reloader.subprocess, "run") as run,
+            ):
+                reloader.ensure_dev_reloader(settings)
+            argv = run.call_args.args[0]
+            self.assertEqual(argv[:3], ["uv", "pip", "install"])
+            self.assertIn(reloader.WATCHDOG_REQUIREMENT, argv)
+
+    def test_dev_reloader_is_left_alone_when_present_or_reload_is_off(self):
+        from cohenix_dev.runtime import reloader
+
+        settings = SimpleNamespace(bench_name="development-bench")
+        for reload_python, importable in ((True, True), (False, False)):
+            with tempfile.TemporaryDirectory() as directory:
+                root = self._reloader_bench(directory, reload_python)
+                with (
+                    mock.patch.object(reloader, "bench_root", return_value=root),
+                    mock.patch.object(reloader, "watchdog_importable", return_value=importable),
+                    mock.patch.object(reloader.subprocess, "run") as run,
+                ):
+                    reloader.ensure_dev_reloader(settings)
+                    self.assertFalse(reloader.dev_reloader_missing(settings))
+                run.assert_not_called()
+
+    def test_stale_pilot_pid_files_are_removed_before_start(self):
+        from cohenix_dev.runtime import processes
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "benches" / "development-bench"
+            (root / "pids").mkdir(parents=True)
+            tmp_pid = Path(directory) / "pilot-development-bench.pid"
+            # This test process is alive but is not a Pilot, like a reused pid after a restart.
+            for path in (tmp_pid, root / "pids" / "bench.pid"):
+                path.write_text(f"{os.getpid()}\n")
+            settings = SimpleNamespace(bench_name="development-bench")
+            with (
+                mock.patch.object(processes, "bench_root", return_value=root),
+                mock.patch.object(processes, "pid_file", return_value=tmp_pid),
+            ):
+                self.assertIsNone(processes.read_pid(settings))
+                processes.clear_stale_pilot_pids(settings)
+            self.assertFalse(tmp_pid.exists())
+            self.assertFalse((root / "pids" / "bench.pid").exists())
+
+    def test_live_pilot_pid_file_is_kept(self):
+        from cohenix_dev.runtime import processes
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "benches" / "development-bench"
+            (root / "pids").mkdir(parents=True)
+            tmp_pid = Path(directory) / "pilot-development-bench.pid"
+            for path in (tmp_pid, root / "pids" / "bench.pid"):
+                path.write_text(f"{os.getpid()}\n")
+            settings = SimpleNamespace(bench_name="development-bench")
+            with (
+                mock.patch.object(processes, "bench_root", return_value=root),
+                mock.patch.object(processes, "pid_file", return_value=tmp_pid),
+                mock.patch.object(processes, "_is_pilot_for_bench", return_value=True),
+            ):
+                processes.clear_stale_pilot_pids(settings)
+            self.assertTrue(tmp_pid.exists())
+            self.assertTrue((root / "pids" / "bench.pid").exists())
+
     def test_bench_start_shim_wraps_venv_console_script(self):
         from cohenix_dev.config import BENCH_SHIM_MARKER
         from cohenix_dev.runtime.pilot import ensure_bench_start_shim

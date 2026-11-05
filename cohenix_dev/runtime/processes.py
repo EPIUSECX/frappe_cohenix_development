@@ -20,6 +20,7 @@ from cohenix_dev.runtime.pilot import (
     pilot_bin,
     run_pilot,
 )
+from cohenix_dev.runtime.reloader import ensure_dev_reloader
 from cohenix_dev.util import port_is_live, python3, which
 
 PID_DIR = Path("/tmp")
@@ -43,6 +44,7 @@ def ensure_bench_config_files(settings: Settings) -> None:
         cprint("Bench config/ is incomplete, regenerating ...", level=2)
         run_pilot(settings, "--bench", settings.bench_name, "setup", "config", reload_after=False)
     ensure_scheduler_procfile(settings)
+    ensure_dev_reloader(settings)
 
 
 def ensure_scheduler_procfile(settings: Settings) -> None:
@@ -153,6 +155,27 @@ def redis_running(settings: Settings) -> Iterator[None]:
             cprint("Stopped the temporary Redis servers", level=3)
 
 
+def _is_pilot_for_bench(pid: int, settings: Settings, *, match_name: bool = True) -> bool:
+    """Whether `pid` is a live Pilot process, by default one started with `-b <bench>`.
+
+    A container restart keeps /tmp and the bench's pids/ directory but renumbers processes from
+    scratch, and boot order makes the numbers nearly deterministic. A leftover pid therefore often
+    names an unrelated live process, sometimes the new Pilot itself. Check the command line.
+    """
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:
+        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return True  # no /proc (not Linux): liveness is all we can check
+    words = [part.decode(errors="replace") for part in argv]
+    if not any(word.endswith("pilot") for word in words):
+        return False
+    return not match_name or settings.bench_name in words
+
+
 def read_pid(settings: Settings) -> int | None:
     path = pid_file(settings)
     if not path.is_file():
@@ -164,11 +187,31 @@ def read_pid(settings: Settings) -> int | None:
         pid = int(raw[0])
     except ValueError:
         return None
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return None
-    return pid
+    return pid if _is_pilot_for_bench(pid, settings) else None
+
+
+def clear_stale_pilot_pids(settings: Settings) -> None:
+    """Drop pid files that do not belong to a live Pilot for this bench.
+
+    `pilot start` begins by sending SIGTERM to the pid in `pids/bench.pid`. After a container
+    restart that pid can be any process, including the Pilot being started, which then dies
+    silently before it logs a line.
+    """
+    # pids/bench.pid is inside this bench, so any live Pilot there is this bench's, even one
+    # started by hand without `-b`. The /tmp file is shared across benches, so it must match.
+    for path, match_name in (
+        (pid_file(settings), True),
+        (bench_root(settings) / "pids" / "bench.pid", False),
+    ):
+        if not path.is_file():
+            continue
+        try:
+            pid = int(path.read_text(encoding="utf-8").strip().splitlines()[0])
+        except (ValueError, IndexError, OSError):
+            pid = None
+        if pid is None or not _is_pilot_for_bench(pid, settings, match_name=match_name):
+            path.unlink(missing_ok=True)
+            cprint(f"Removed stale pid file {path} (pid {pid}).", level=3)
 
 
 def start_bench(settings: Settings) -> None:
@@ -193,6 +236,7 @@ def _start_bench(settings: Settings, reporter: StageReporter) -> None:
             binary = pilot_bin(settings)
             if not binary.exists():
                 raise CohenixError(f"Pilot is not installed at {binary}; run `devctl sync` first.")
+            clear_stale_pilot_pids(settings)
             log = log_file(settings)
             with log.open("ab") as handle:
                 process = subprocess.Popen(

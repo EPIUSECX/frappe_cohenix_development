@@ -12,6 +12,7 @@ from cohenix_dev.provisioning.sites import create_sites, provision_site
 from cohenix_dev.runtime.bench import ensure_classic_bench_compat
 from cohenix_dev.runtime.pilot import ensure_pilot, ensure_redis_server
 from cohenix_dev.runtime.processes import redis_running
+from cohenix_dev.runtime.reloader import ensure_dev_reloader
 from cohenix_dev.state.fingerprint import desired_fingerprint, load_fingerprint, plan_sync, save_fingerprint
 from cohenix_dev.state.provenance import write_provisioning_record
 from cohenix_dev.verification.runtime import verify_installation
@@ -56,6 +57,7 @@ def _sync_environment(settings: Settings, reporter: StageReporter, *, verify: bo
         reporter.skip_rest("nothing to do", keep=("Verify environment",))
         with reporter.stage("Verify environment", skip=not verify) as running:
             if running:
+                ensure_dev_reloader(settings)
                 verify_installation(settings)
         return
 
@@ -100,6 +102,7 @@ def _sync_environment(settings: Settings, reporter: StageReporter, *, verify: bo
 
     with reporter.stage("Verify environment", skip=not verify) as running:
         if running:
+            ensure_dev_reloader(settings)
             verify_installation(settings)
     with reporter.stage("Save fingerprint"):
         write_provisioning_record(settings)

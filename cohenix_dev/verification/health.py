@@ -26,9 +26,19 @@ class ProcessHealth:
 
 
 def _bench_ports(settings: Settings) -> tuple[int, int, int, int]:
+    """HTTP, realtime, Redis cache and Redis queue ports.
+
+    Pilot's lite mode serves realtime from the web process (frappe.runner), so no separate
+    Socket.IO process exists and `bench.toml`'s `socketio_port` is unused. Mirrors Pilot's
+    `Bench.realtime_port`.
+    """
     _, bench_config = import_pilot_config(settings)
-    config = bench_config.read(bench_root(settings))
-    return config.http_port, config.socketio_port, config.redis.cache_port, config.redis.queue_port
+    root = bench_root(settings)
+    config = bench_config.read(root)
+    runner = root / "apps" / "frappe" / "frappe" / "runner.py"
+    lite = bool(config.lite_mode.enabled) and runner.is_file()
+    realtime_port = config.http_port if lite else config.socketio_port
+    return config.http_port, realtime_port, config.redis.cache_port, config.redis.queue_port
 
 
 def _pgrep(pattern: str) -> bool:
@@ -43,7 +53,7 @@ def inspect_processes(settings: Settings) -> ProcessHealth:
     except Exception:  # noqa: BLE001
         return health
     health.web = port_is_live(http_port)
-    health.socketio = port_is_live(socketio_port)
+    health.socketio = port_is_live(socketio_port) and probe_realtime(socketio_port, settings.site_name)
     health.redis = port_is_live(cache_port) and port_is_live(queue_port)
     health.workers = _pgrep("frappe.utils.background_jobs") or _pgrep("bench_helper frappe worker")
     health.scheduler = _pgrep("frappe.utils.scheduler") or _pgrep("bench_helper frappe schedule")
@@ -56,6 +66,17 @@ def inspect_processes(settings: Settings) -> ProcessHealth:
     if health.socketio:
         health.realtime_detail = f"listening on {socketio_port}"
     return health
+
+
+def probe_realtime(port: int, site_name: str) -> bool:
+    """Whether a Socket.IO (Engine.IO polling) handshake succeeds on `port`."""
+    url = f"http://127.0.0.1:{port}/socket.io/?EIO=4&transport=polling"
+    request = urllib.request.Request(url, headers={"Host": site_name})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+            return response.status == 200
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def probe_http(port: int, site_name: str) -> tuple[bool, str]:
