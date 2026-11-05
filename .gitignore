@@ -211,3 +211,10 @@ development-bench
 docs/last-smoke-metrics.txt
 docs/last-image-size.txt
 pilot-canary-report.md
+
+# Cohenix Pilot desktop (Tauri)
+desktop/cohenix-pilot/dist/
+desktop/cohenix-pilot/src-tauri/target/
+desktop/cohenix-pilot/node_modules/
+# Keep package-lock for reproducible desktop CI once generated.
+!desktop/cohenix-pilot/package-lock.json

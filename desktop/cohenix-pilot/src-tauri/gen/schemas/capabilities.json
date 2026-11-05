@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default Cohenix Pilot capabilities (no arbitrary shell)","local":true,"windows":["main"],"permissions":["core:default","core:event:default","opener:default"]}}

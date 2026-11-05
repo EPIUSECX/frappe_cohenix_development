@@ -1,0 +1,358 @@
+:root {
+  --bg0: #0c1218;
+  --bg1: #121b24;
+  --bg2: #1a2633;
+  --panel: rgba(18, 27, 36, 0.88);
+  --line: rgba(148, 175, 196, 0.18);
+  --text: #e8eef4;
+  --muted: #8fa3b5;
+  --brand: #2bb8a6;
+  --brand-dim: #1a7a6e;
+  --accent: #3d8bfd;
+  --warn: #d4a017;
+  --danger: #e35d6a;
+  --ok: #3ecf8e;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  --radius: 12px;
+  --font: "DM Sans", "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(43, 184, 166, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(61, 139, 253, 0.12), transparent 50%),
+    linear-gradient(165deg, var(--bg0), var(--bg1) 45%, #0a1016);
+  background-attachment: fixed;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  background: var(--brand);
+  color: #04120f;
+  font-weight: 600;
+  transition: transform 160ms ease, background 160ms ease, opacity 160ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #34d0bc;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line);
+}
+
+button.danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: rgba(227, 93, 106, 0.45);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100%;
+  height: 100%;
+}
+
+.sidebar {
+  padding: 1.5rem 1rem;
+  border-right: 1px solid var(--line);
+  background: rgba(8, 12, 16, 0.55);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  animation: fade-up 500ms ease both;
+}
+
+.brand strong {
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.brand span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.nav button {
+  text-align: left;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.nav button.active,
+.nav button:hover:not(:disabled) {
+  background: rgba(43, 184, 166, 0.12);
+  color: var(--text);
+  transform: none;
+}
+
+.main {
+  padding: 1.5rem 1.75rem 2rem;
+  overflow: auto;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem 1.35rem;
+  animation: fade-up 450ms ease both;
+}
+
+.panel + .panel {
+  margin-top: 1rem;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: 1.7rem;
+}
+
+p.lead {
+  color: var(--muted);
+  margin: 0 0 1.25rem;
+  max-width: 52ch;
+  line-height: 1.5;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.stat {
+  padding: 0.85rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+}
+
+.stat .label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat .value {
+  margin-top: 0.35rem;
+  font-weight: 600;
+}
+
+.stat .value.ok {
+  color: var(--ok);
+}
+.stat .value.warn {
+  color: var(--warn);
+}
+.stat .value.bad {
+  color: var(--danger);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.log-view {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  background: #070b10;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.9rem;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #c5d4e2;
+}
+
+.wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.wizard-steps span {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.wizard-steps span.done {
+  color: var(--ok);
+  border-color: rgba(62, 207, 142, 0.35);
+}
+
+.wizard-steps span.current {
+  color: var(--brand);
+  border-color: rgba(43, 184, 166, 0.5);
+  background: rgba(43, 184, 166, 0.08);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.9rem;
+}
+
+.field label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.field select,
+.field input {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.55rem 0.4rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.error-banner {
+  border: 1px solid rgba(227, 93, 106, 0.4);
+  background: rgba(227, 93, 106, 0.1);
+  color: #ffc4cb;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.welcome-hero {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  max-width: 640px;
+  margin-bottom: 1rem;
+  padding-top: 0.5rem;
+  animation: fade-up 600ms ease both;
+}
+
+.welcome-hero .brand-mark {
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  background: linear-gradient(120deg, #7dffef, #2bb8a6 40%, #3d8bfd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: brand-glow 2.8s ease-in-out infinite alternate;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes brand-glow {
+  from {
+    filter: brightness(1);
+  }
+  to {
+    filter: brightness(1.15);
+  }
+}
+
+@media (max-width: 840px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

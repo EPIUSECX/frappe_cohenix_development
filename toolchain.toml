@@ -35,6 +35,13 @@ branch = "version-16"
 # Set PILOT_VERSION to an explicit tag to freeze one release.
 version = "latest"
 
+# Native WSL / Cohenix Pilot for Windows uses a newer Pilot than the Docker image.
+# Do not change [pilot].version above when adjusting this pin.
+[pilot.native_wsl]
+version = "v0.0.64-pre-alpha"
+sha256 = "bccc23e1df62635c12d878b3435afd03d9425a5515abc7d59e5e2c9e93693edd"
+notes = "Verified checksum 2026-10-15 against GitHub release asset pilot.tar.gz. Independent of the container pin."
+
 [database]
 mariadb_image = "docker.io/library/mariadb:11.8.9"
 postgres_image = "docker.io/library/postgres:16.10-bookworm"
