@@ -1,0 +1,91 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Frappe: Web",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/development-bench/env/bin/python",
+      "program": "${workspaceFolder}/development-bench/apps/frappe/frappe/utils/bench_helper.py",
+      "args": [
+        "frappe",
+        "serve",
+        "--port",
+        "8000",
+        "--noreload",
+        "--nothreading"
+      ],
+      "cwd": "${workspaceFolder}/development-bench/sites",
+      "env": {
+        "DEV_SERVER": "1"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Frappe: Short Worker",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/development-bench/env/bin/python",
+      "program": "${workspaceFolder}/development-bench/apps/frappe/frappe/utils/bench_helper.py",
+      "args": ["frappe", "worker", "--queue", "short"],
+      "cwd": "${workspaceFolder}/development-bench/sites",
+      "env": {
+        "DEV_SERVER": "1"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Frappe: Default Worker",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/development-bench/env/bin/python",
+      "program": "${workspaceFolder}/development-bench/apps/frappe/frappe/utils/bench_helper.py",
+      "args": ["frappe", "worker", "--queue", "default"],
+      "cwd": "${workspaceFolder}/development-bench/sites",
+      "env": {
+        "DEV_SERVER": "1"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Frappe: Long Worker",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}/development-bench/env/bin/python",
+      "program": "${workspaceFolder}/development-bench/apps/frappe/frappe/utils/bench_helper.py",
+      "args": ["frappe", "worker", "--queue", "long"],
+      "cwd": "${workspaceFolder}/development-bench/sites",
+      "env": {
+        "DEV_SERVER": "1"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Frappe: Attach to Pilot web",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/development-bench",
+          "remoteRoot": "${workspaceFolder}/development-bench"
+        }
+      ],
+      "justMyCode": false
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Frappe: Web + Short Worker",
+      "configurations": ["Frappe: Web", "Frappe: Short Worker"],
+      "stopAll": true
+    }
+  ]
+}

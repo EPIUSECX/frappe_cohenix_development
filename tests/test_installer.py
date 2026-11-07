@@ -161,8 +161,27 @@ class CliTests(unittest.TestCase):
     def test_help_lists_core_commands(self):
         parser = build_parser()
         text = parser.format_help()
-        for name in ("sync", "doctor", "verify", "status", "start", "reload", "reset"):
+        for name in (
+            "sync",
+            "doctor",
+            "verify",
+            "status",
+            "start",
+            "reload",
+            "urls",
+            "logs",
+            "console",
+            "wait",
+            "reset",
+        ):
             self.assertIn(name, text)
+
+    def test_crm_and_helpdesk_profiles_use_version_16(self):
+        crm = resolve_profile("crm")
+        helpdesk = resolve_profile("helpdesk")
+        self.assertEqual([app.name for app in crm], ["frappe", "crm"])
+        self.assertEqual([app.name for app in helpdesk], ["frappe", "helpdesk"])
+        self.assertTrue(all(app.branch == "version-16" for app in (*crm, *helpdesk)))
 
     def test_latest_pilot_is_the_default(self):
         with mock.patch.dict(os.environ, {}, clear=False):
@@ -371,6 +390,8 @@ class DevContainerLifecycleTests(unittest.TestCase):
         self.assertNotIn("exec devctl start", start)
         self.assertIn("COHENIX_SKIP_AUTOSYNC", helpers)
         self.assertIn("COHENIX_SKIP_DOCTOR", helpers)
+        self.assertIn("devctl wait", helpers)
+        self.assertIn("devctl urls", helpers)
 
     def test_skip_autosync_does_not_call_devctl(self):
         root = Path(__file__).resolve().parents[1]

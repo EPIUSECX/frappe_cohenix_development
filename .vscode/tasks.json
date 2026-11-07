@@ -32,6 +32,30 @@
       "problemMatcher": []
     },
     {
+      "label": "devctl: urls",
+      "type": "shell",
+      "command": "devctl urls",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: logs",
+      "type": "shell",
+      "command": "devctl logs",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: console",
+      "type": "shell",
+      "command": "devctl console",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: wait",
+      "type": "shell",
+      "command": "devctl wait",
+      "problemMatcher": []
+    },
+    {
       "label": "devctl: sync",
       "type": "shell",
       "command": "devctl sync",

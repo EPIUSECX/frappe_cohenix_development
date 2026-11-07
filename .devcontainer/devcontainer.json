@@ -132,5 +132,10 @@
   "containerEnv": {
     "PILOT_DIR": "/home/frappe/pilot",
     "COHENIX_WORKSPACE": "/workspace"
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
   }
 }
