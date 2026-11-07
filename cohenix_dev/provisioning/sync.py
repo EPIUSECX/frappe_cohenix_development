@@ -59,6 +59,7 @@ def _sync_environment(settings: Settings, reporter: StageReporter, *, verify: bo
             if running:
                 ensure_dev_reloader(settings)
                 verify_installation(settings)
+                _finish_dx(settings)
         return
 
     with reporter.stage("Initialize bench"):
@@ -104,8 +105,17 @@ def _sync_environment(settings: Settings, reporter: StageReporter, *, verify: bo
         if running:
             ensure_dev_reloader(settings)
             verify_installation(settings)
+            _finish_dx(settings)
     with reporter.stage("Save fingerprint"):
         write_provisioning_record(settings)
         desired = desired_fingerprint(settings)
         save_fingerprint(settings, desired)
         cprint("devctl sync complete.", level=2)
+
+
+def _finish_dx(settings: Settings) -> None:
+    from cohenix_dev.dx import configure_mailpit_if_present, ensure_shell_motd_hook, write_motd
+
+    configure_mailpit_if_present(settings)
+    write_motd(settings)
+    ensure_shell_motd_hook()

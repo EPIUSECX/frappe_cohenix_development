@@ -158,6 +158,10 @@ all read from it.
 |---|---|
 | `devctl sync` | Create or update the bench, apps, and sites. Safe to re-run. |
 | `devctl doctor` | Diagnose the stack and print fixes for failures. |
+| `devctl urls` | Print Desk, Pilot admin, and Mailpit URLs. |
+| `devctl wait` | Block until `frappe.ping` answers on the default site. |
+| `devctl logs` | Tail Pilot process logs (`/tmp/pilot-*.log`). |
+| `devctl console` | Open a Frappe Python console on the default site. |
 | `devctl verify` | Fail if the provisioned environment is incomplete. |
 | `devctl status` | Short health view. |
 | `devctl start` / `stop` / `restart` | Pilot process set (web, workers, Socket.IO, Redis, scheduler). |
@@ -209,6 +213,8 @@ real Frappe/EPIUSECX URLs, not invented names.
 | `frappe` | frappe |
 | `erp` | frappe, erpnext |
 | `hr` | frappe, erpnext, hrms (**default**) |
+| `crm` | frappe + Frappe CRM |
+| `helpdesk` | frappe + Frappe Helpdesk |
 | `localisation` | hr + `za_local_core`, `za_local` (`cohenix_local_za`), `za_local_payroll` |
 | `integrations` | erp + payments + ecommerce_integrations |
 | `full-cohenix` | localisation + payments + ecommerce_integrations |
@@ -221,7 +227,10 @@ devctl sync
 ```
 
 Project-specific apps: set `COHENIX_APPS_JSON=/path/to/apps.json` (frappe_docker
-shape) or `devctl app add <repository>`. Local overlay: `.cohenix/apps.overlay.toml`.
+shape; see `config/apps-example.json`) or `devctl app add <repository>`. Local
+overlay: `.cohenix/apps.overlay.toml`.
+
+For day-to-day editor and agent tips, see [docs/DX.md](docs/DX.md).
 
 ## Recovery
 
@@ -327,5 +336,6 @@ are not mounted by default; use GitHub credential forwarding.
 - Sites use `.localhost` names so Host routing works without `/etc/hosts`.
 
 See [docs/MIGRATION.md](docs/MIGRATION.md) if you are coming from the previous
-installer-based container, and [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md)
-for the redesign notes and Pilot limitations.
+installer-based container, [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md)
+for the redesign notes and Pilot limitations, and [docs/DX.md](docs/DX.md) for
+how this platform compares to public Frappe tooling and what to use daily.

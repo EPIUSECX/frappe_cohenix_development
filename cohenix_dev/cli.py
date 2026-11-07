@@ -65,6 +65,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reload only the web process, not background workers",
     )
 
+    urls = sub.add_parser("urls", help="Print site, Pilot admin, and Mailpit URLs")
+    _add_common(urls)
+
+    logs = sub.add_parser("logs", help="Tail Pilot process logs")
+    _add_common(logs)
+    logs.add_argument("--lines", type=int, default=80, help="Initial lines to print before following")
+
+    console = sub.add_parser("console", help="Open a Frappe Python console on a site")
+    _add_common(console)
+    console.add_argument("site", nargs="?", default=None, help="Site name (default: configured site)")
+
+    wait = sub.add_parser("wait", help="Block until the default site answers HTTP ping")
+    _add_common(wait)
+    wait.add_argument("--timeout", type=float, default=60.0)
+
     site = sub.add_parser("site", help="Site operations")
     site_sub = site.add_subparsers(dest="site_command", required=True)
     site_create = site_sub.add_parser("create", help="Create a site")
@@ -171,6 +186,22 @@ def dispatch(args: argparse.Namespace) -> int:
 
         reload_bench_workers(settings, web_only=bool(getattr(args, "web", False)))
         return 0
+    if command == "urls":
+        from cohenix_dev.dx import print_urls
+
+        return print_urls(settings)
+    if command == "logs":
+        from cohenix_dev.dx import follow_logs
+
+        return follow_logs(settings, lines=int(args.lines))
+    if command == "console":
+        from cohenix_dev.dx import open_console
+
+        return open_console(settings, site=args.site)
+    if command == "wait":
+        from cohenix_dev.dx import wait_for_ready
+
+        return wait_for_ready(settings, timeout=float(args.timeout))
     if command == "site":
         return _site(settings, args)
     if command == "app":

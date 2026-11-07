@@ -43,6 +43,20 @@ apps = [
   { name = "ecommerce_integrations", repo = "https://github.com/frappe/ecommerce_integrations", branch = "version-16" },
 ]
 
+[profiles.crm]
+description = "Frappe CRM on the framework (no ERPNext)"
+extends = "frappe"
+apps = [
+  { name = "crm", repo = "https://github.com/frappe/crm", branch = "version-16" },
+]
+
+[profiles.helpdesk]
+description = "Frappe Helpdesk on the framework (no ERPNext)"
+extends = "frappe"
+apps = [
+  { name = "helpdesk", repo = "https://github.com/frappe/helpdesk", branch = "version-16" },
+]
+
 [profiles.full-cohenix]
 description = "Localisation stack plus v16 integration apps"
 extends = "localisation"
