@@ -5,7 +5,7 @@
   "service": "frappe",
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
-  "forwardPorts": [8000, 8002, 9000, 6787, 8025, 1025],
+  "forwardPorts": [8000, 8002, 9000, 6787, 5678, 8025, 1025],
   "portsAttributes": {
     "8000": {
       "label": "Frappe HTTP",
@@ -32,6 +32,10 @@
     },
     "6787": {
       "label": "Frappe asset watcher",
+      "onAutoForward": "silent"
+    },
+    "5678": {
+      "label": "debugpy (attach to Pilot web)",
       "onAutoForward": "silent"
     },
     "8025": {
@@ -123,14 +127,25 @@
           "titleBar.inactiveForeground": "#ffffff99"
         }
       }
+    },
+    "codespaces": {
+      "openFiles": ["README.md", "docs/DX.md", "docs/CODESPACES.md"]
     }
   },
   "onCreateCommand": "/workspace/scripts/on-create.sh",
+  "updateContentCommand": "/workspace/scripts/update-content.sh",
   "postCreateCommand": "/workspace/scripts/post-create.sh",
   "postStartCommand": "/workspace/scripts/start-dev.sh",
   "waitFor": "postStartCommand",
   "containerEnv": {
     "PILOT_DIR": "/home/frappe/pilot",
-    "COHENIX_WORKSPACE": "/workspace"
+    "COHENIX_WORKSPACE": "/workspace",
+    "COHENIX_DEBUGPY": "1",
+    "COHENIX_DEBUGPY_PORT": "5678"
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
   }
 }

@@ -65,6 +65,47 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reload only the web process, not background workers",
     )
 
+    urls = sub.add_parser("urls", help="Print site, Pilot admin, and Mailpit URLs")
+    _add_common(urls)
+
+    logs = sub.add_parser("logs", help="Tail Pilot process logs")
+    _add_common(logs)
+    logs.add_argument("--lines", type=int, default=80, help="Initial lines to print before following")
+
+    console = sub.add_parser("console", help="Open a Frappe Python console on a site")
+    _add_common(console)
+    console.add_argument("site", nargs="?", default=None, help="Site name (default: configured site)")
+
+    wait = sub.add_parser("wait", help="Block until the default site answers HTTP ping")
+    _add_common(wait)
+    wait.add_argument("--timeout", type=float, default=60.0)
+
+    seed = sub.add_parser("seed", help="Load demo HR company + sample employees")
+    _add_common(seed)
+    seed.add_argument("--company", default=None, help="Company name (default: Cohenix Demo)")
+    seed.add_argument("--abbr", default=None, help="Company abbreviation (default: CD)")
+    seed.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-check and create any missing records even if seed already ran",
+    )
+
+    debug = sub.add_parser("debug", help="Attach-style debugpy for the running Pilot web process")
+    debug_sub = debug.add_subparsers(dest="debug_command", required=True)
+    debug_enable = debug_sub.add_parser("enable", help="Listen on debugpy without stopping Pilot")
+    _add_common(debug_enable)
+    debug_enable.add_argument("--port", type=int, default=None)
+    debug_enable.add_argument(
+        "--no-reload",
+        action="store_true",
+        help="Install the hook but do not reload Pilot web",
+    )
+    debug_disable = debug_sub.add_parser("disable", help="Stop installing the debugpy listener")
+    _add_common(debug_disable)
+    debug_disable.add_argument("--no-reload", action="store_true")
+    debug_status = debug_sub.add_parser("status", help="Show whether debugpy attach is enabled")
+    _add_common(debug_status)
+
     site = sub.add_parser("site", help="Site operations")
     site_sub = site.add_subparsers(dest="site_command", required=True)
     site_create = site_sub.add_parser("create", help="Create a site")
@@ -171,6 +212,33 @@ def dispatch(args: argparse.Namespace) -> int:
 
         reload_bench_workers(settings, web_only=bool(getattr(args, "web", False)))
         return 0
+    if command == "urls":
+        from cohenix_dev.dx import print_urls
+
+        return print_urls(settings)
+    if command == "logs":
+        from cohenix_dev.dx import follow_logs
+
+        return follow_logs(settings, lines=int(args.lines))
+    if command == "console":
+        from cohenix_dev.dx import open_console
+
+        return open_console(settings, site=args.site)
+    if command == "wait":
+        from cohenix_dev.dx import wait_for_ready
+
+        return wait_for_ready(settings, timeout=float(args.timeout))
+    if command == "seed":
+        from cohenix_dev.seed import DEFAULT_ABBR, DEFAULT_COMPANY, seed_hr_demo
+
+        return seed_hr_demo(
+            settings,
+            company=args.company or DEFAULT_COMPANY,
+            abbr=args.abbr or DEFAULT_ABBR,
+            force=bool(args.force),
+        )
+    if command == "debug":
+        return _debug(settings, args)
     if command == "site":
         return _site(settings, args)
     if command == "app":
@@ -180,6 +248,25 @@ def dispatch(args: argparse.Namespace) -> int:
     if command == "reset":
         return _reset(settings, args)
     raise CohenixError(f"Unknown command {command}")
+
+
+def _debug(settings: Settings, args: argparse.Namespace) -> int:
+    from cohenix_dev.runtime.debugpy_hook import debug_status, disable_debugpy, enable_debugpy
+
+    if args.debug_command == "enable":
+        return enable_debugpy(
+            settings,
+            port=args.port,
+            reload_workers=not bool(getattr(args, "no_reload", False)),
+        )
+    if args.debug_command == "disable":
+        return disable_debugpy(
+            settings,
+            reload_workers=not bool(getattr(args, "no_reload", False)),
+        )
+    if args.debug_command == "status":
+        return debug_status(settings)
+    raise CohenixError(f"Unknown debug command {args.debug_command}")
 
 
 def _site(settings: Settings, args: argparse.Namespace) -> int:

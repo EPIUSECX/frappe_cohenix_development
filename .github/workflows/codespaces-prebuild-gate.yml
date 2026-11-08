@@ -1,0 +1,72 @@
+name: Codespaces prebuild gate
+
+# Codespaces prebuilds are configured in the GitHub UI (Settings → Codespaces).
+# This workflow verifies the GHCR v16 image that prebuilds should pull is
+# published, and reminds maintainers to enable/refresh the prebuild config.
+
+on:
+  workflow_run:
+    workflows: ["Development image"]
+    types: [completed]
+    branches: [version-16_cohenix]
+  workflow_dispatch:
+
+concurrency:
+  group: codespaces-prebuild-gate
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  IMAGE: ghcr.io/epiusecx/cohenix-frappe-dev:v16
+
+jobs:
+  ghcr-ready:
+    name: Confirm GHCR v16 is pullable
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull published v16 image
+        id: pull
+        run: |
+          set -euo pipefail
+          if docker pull "$IMAGE"; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            docker image inspect "$IMAGE" --format 'size={{.Size}} digest={{.Id}}'
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::error::GHCR image $IMAGE is not pullable yet. Publish via the Development image workflow before enabling Codespaces prebuilds."
+            exit 1
+          fi
+
+      - name: Prebuild checklist
+        run: |
+          cat <<'EOF'
+          GHCR v16 is pullable. Enable or refresh Codespaces prebuilds:
+
+          1. Repo Settings → Codespaces → Set up prebuild
+          2. Branch: version-16_cohenix
+          3. Configuration: .devcontainer/devcontainer.json
+          4. Trigger: On configuration change (recommended) or Scheduled daily
+          5. Regions: only where your team works
+
+          Prebuilds run onCreate + updateContent (CLI install). Site sync still
+          happens in postCreate/postStart once MariaDB is up.
+
+          See docs/CODESPACES.md
+          EOF

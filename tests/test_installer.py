@@ -161,8 +161,29 @@ class CliTests(unittest.TestCase):
     def test_help_lists_core_commands(self):
         parser = build_parser()
         text = parser.format_help()
-        for name in ("sync", "doctor", "verify", "status", "start", "reload", "reset"):
+        for name in (
+            "sync",
+            "doctor",
+            "verify",
+            "status",
+            "start",
+            "reload",
+            "urls",
+            "logs",
+            "console",
+            "wait",
+            "seed",
+            "debug",
+            "reset",
+        ):
             self.assertIn(name, text)
+
+    def test_crm_and_helpdesk_profiles_use_version_16(self):
+        crm = resolve_profile("crm")
+        helpdesk = resolve_profile("helpdesk")
+        self.assertEqual([app.name for app in crm], ["frappe", "crm"])
+        self.assertEqual([app.name for app in helpdesk], ["frappe", "helpdesk"])
+        self.assertTrue(all(app.branch == "version-16" for app in (*crm, *helpdesk)))
 
     def test_latest_pilot_is_the_default(self):
         with mock.patch.dict(os.environ, {}, clear=False):
@@ -218,6 +239,19 @@ class InterpreterTests(unittest.TestCase):
                 ensure_scheduler_procfile(settings)
             text = (root / "config" / "Procfile").read_text()
             self.assertEqual(text.count("schedule:"), 1)
+
+    def test_scheduler_procfile_left_alone_when_pilot_already_writes_it(self):
+        from cohenix_dev.runtime.processes import ensure_scheduler_procfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "benches" / "development-bench"
+            (root / "config").mkdir(parents=True)
+            original = "web: frappe serve\nschedule: frappe schedule\n"
+            (root / "config" / "Procfile").write_text(original)
+            settings = SimpleNamespace(bench_name="development-bench", pilot_dir=directory)
+            with mock.patch("cohenix_dev.runtime.processes.bench_root", return_value=root):
+                ensure_scheduler_procfile(settings)
+            self.assertEqual((root / "config" / "Procfile").read_text(), original)
 
     def _reloader_bench(self, directory, reload_python=True):
         root = Path(directory) / "benches" / "development-bench"
@@ -348,12 +382,21 @@ class DevContainerLifecycleTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         data = json.loads((root / ".devcontainer" / "devcontainer.json").read_text())
         self.assertEqual(data["waitFor"], "postStartCommand")
+        self.assertEqual(data["updateContentCommand"], "/workspace/scripts/update-content.sh")
         self.assertEqual(data["postCreateCommand"], "/workspace/scripts/post-create.sh")
         self.assertEqual(data["postStartCommand"], "/workspace/scripts/start-dev.sh")
+        self.assertEqual(data["containerEnv"].get("COHENIX_DEBUGPY"), "1")
+        self.assertIn(5678, data["forwardPorts"])
 
     def test_lifecycle_scripts_are_valid_posix_sh(self):
         root = Path(__file__).resolve().parents[1]
-        for name in ("on-create.sh", "post-create.sh", "start-dev.sh", "cohenix-lifecycle.sh"):
+        for name in (
+            "on-create.sh",
+            "update-content.sh",
+            "post-create.sh",
+            "start-dev.sh",
+            "cohenix-lifecycle.sh",
+        ):
             path = root / "scripts" / name
             result = subprocess.run(["sh", "-n", str(path)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -371,6 +414,8 @@ class DevContainerLifecycleTests(unittest.TestCase):
         self.assertNotIn("exec devctl start", start)
         self.assertIn("COHENIX_SKIP_AUTOSYNC", helpers)
         self.assertIn("COHENIX_SKIP_DOCTOR", helpers)
+        self.assertIn("devctl wait", helpers)
+        self.assertIn("devctl urls", helpers)
 
     def test_skip_autosync_does_not_call_devctl(self):
         root = Path(__file__).resolve().parents[1]

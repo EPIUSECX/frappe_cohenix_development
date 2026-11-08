@@ -1,22 +1,24 @@
 # Last compatibility audit. The development environment does not install these
 # tags; `devctl sync` follows the newest Pilot release. Workarounds stay until
-# a test proves the replacement is safe.
+# a test proves the replacement is safe. Re-run `python scripts/audit-pilot-compat.py`
+# after bumping audited_canary.
 
 schema_version = 1
 pinned = "v0.0.23-pre-alpha"
-audited_canary = "v0.0.55-pre-alpha"
+audited_canary = "v0.0.99-pre-alpha"
 
 [[workarounds]]
 id = "cli-packaging"
 still_required_on_pinned = true
 still_required_on_canary = false
+dropped_on_canary_at = "v0.0.55-pre-alpha"
 reason = """
 Pinned Pilot CLI imports top-level packaging during multi-app site install.
-v0.0.55 vendors packaging as pilot._vendor.packaging. Keep the pip fallback
-when import packaging fails so both releases work.
+v0.0.55+ vendors packaging as pilot._vendor.packaging. Soft-install packaging
+only when missing so frozen older tags still work.
 
 Do not symlink the uv venv python into ~/.local/bin: CPython then uses
-~/.local as sys.prefix and the venv packages (including packaging) vanish.
+~/.local as sys.prefix and the venv packages vanish.
 devctl must invoke Pilot with VIRTUAL_ENV/bin/python3.
 """
 
@@ -69,7 +71,7 @@ reason = "Release tarballs still clone apps with --depth 1 unless VERSION is 'de
 id = "port-offset-publish"
 still_required_on_pinned = true
 still_required_on_canary = true
-reason = "Pilot admin default is 7000; Dev Containers forward 8002 instead."
+reason = "Pilot admin default is still 7000; Dev Containers forward 8002 instead."
 
 [[workarounds]]
 id = "db-login-scope"
@@ -106,10 +108,9 @@ id = "bench-start-shim"
 still_required_on_pinned = true
 still_required_on_canary = true
 reason = """
-Pilot writes no Procfile; `bench start` must delegate to Pilot. The v2 shim
-also maps `bench stop`/`restart`/`reload` onto Pilot and, after mutating
-commands such as install-app, writes pids/reload.request so workers pick up
-the new app without a full Pilot stop/start.
+Pilot writes no classic Bench Procfile for `bench start`; the v2 shim maps
+start/stop/restart/reload onto Pilot and, after mutating commands such as
+install-app, writes pids/reload.request so workers pick up the new app.
 """
 
 [[workarounds]]
@@ -127,10 +128,13 @@ IPC so Redis, watch, and admin stay up.
 [[workarounds]]
 id = "procfile-omits-scheduler"
 still_required_on_pinned = true
-still_required_on_canary = true
+still_required_on_canary = false
+dropped_on_canary_at = "v0.0.99-pre-alpha"
 reason = """
-Pilot's generated Procfile has web, socketio, workers, redis, and watch, but
-not `frappe schedule`. devctl start adds the line and starts the process.
+Older Pilot Procfiles omitted `frappe schedule`. Current Pilot
+ProcessDefinitionBuilder.schedule_definition() writes it. Cohenix only
+patches the Procfile / forks a scheduler when the line is still missing,
+and never starts a duplicate when Pilot already owns schedule.
 """
 
 [[workarounds]]
@@ -149,7 +153,7 @@ still_required_on_canary = true
 reason = """
 Pilot's shebang is #!/usr/bin/env python3. A symlink of the uv venv python
 into ~/.local/bin makes CPython use that directory as sys.prefix, hiding
-packaging. Invoke Pilot with VIRTUAL_ENV/bin/python3.
+packages. Invoke Pilot with VIRTUAL_ENV/bin/python3.
 """
 
 [[workarounds]]

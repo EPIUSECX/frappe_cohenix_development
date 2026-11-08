@@ -91,10 +91,15 @@ cohenix_doctor() {
 		cohenix_log "Skipping automatic devctl doctor (COHENIX_SKIP_DOCTOR is set)."
 		return 0
 	fi
+	# Prefer an HTTP ping when wait is available; fall back to doctor retries.
+	if command -v devctl >/dev/null 2>&1 || python3 -c "import cohenix_dev" >/dev/null 2>&1; then
+		cohenix_run_devctl wait --timeout 45 || true
+	fi
 	# Web, workers, and Socket.IO can take a few seconds after Pilot forks.
 	i=0
 	while [ "$i" -lt 15 ]; do
 		if cohenix_run_devctl doctor; then
+			cohenix_run_devctl urls || true
 			site="${SITE_NAME:-cohenix.localhost}"
 			port="${HTTP_PORT:-8000}"
 			cohenix_log "Ready: http://${site}:${port}/app  (Administrator / admin)"
