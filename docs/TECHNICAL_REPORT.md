@@ -217,13 +217,11 @@ in the VS Code / Cursor Dev Container log while postCreate/postStart run.
 ## Recommended next steps
 
 1. Run the image workflow on `version-16_cohenix` so GHCR receives the first
-   multi-arch `v16` tag.
-2. Re-audit `config/pilot-compat.toml` when a Pilot release removes a
-   workaround. Sync already installs that release; the manifest does not.
-3. Add Codespaces machine prebuilds once the published image exists.
-4. If Cohenix private app URLs should replace public Frappe remotes in a
+   multi-arch `v16` tag, then enable Codespaces prebuilds per [CODESPACES.md](CODESPACES.md).
+2. Re-audit `config/pilot-compat.toml` with `python scripts/audit-pilot-compat.py`
+   when a Pilot release removes a workaround. Scheduler omission is already
+   dropped on canary (`v0.0.99-pre-alpha`).
+3. If Cohenix private app URLs should replace public Frappe remotes in a
    profile, put them in `config/profiles.toml` — do not invent names.
-5. Consider pinning MariaDB by digest after the first production week of 11.8.9.
-6. See [DX.md](DX.md) for editor/agent convenience work (`devctl urls|logs|console`,
-   launch configs, Cursor `.cursor/environment.json`) and remaining ideas
-   (attach debugpy without stopping Pilot, optional `devctl seed`).
+4. Consider pinning MariaDB by digest after the first production week of 11.8.9.
+5. See [DX.md](DX.md) for `devctl seed`, `devctl debug`, and remaining ideas.

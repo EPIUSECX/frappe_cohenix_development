@@ -114,8 +114,8 @@ def write_motd(settings: Settings) -> Path:
     lines = [
         "Cohenix Frappe v16 ready.",
         *[f"  {label}: {url}" for label, url in site_urls(settings)[:4]],
-        "  Commands: devctl doctor | urls | logs | console | sync | start",
-        "  Debug: use Run and Debug → Frappe: Web (stop Pilot web first, or attach).",
+        "  Commands: devctl doctor | urls | logs | console | seed | sync | start",
+        "  Debug: Run and Debug → Frappe: Attach to Pilot web (devctl debug enable).",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")

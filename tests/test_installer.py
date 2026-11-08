@@ -172,6 +172,8 @@ class CliTests(unittest.TestCase):
             "logs",
             "console",
             "wait",
+            "seed",
+            "debug",
             "reset",
         ):
             self.assertIn(name, text)
@@ -237,6 +239,19 @@ class InterpreterTests(unittest.TestCase):
                 ensure_scheduler_procfile(settings)
             text = (root / "config" / "Procfile").read_text()
             self.assertEqual(text.count("schedule:"), 1)
+
+    def test_scheduler_procfile_left_alone_when_pilot_already_writes_it(self):
+        from cohenix_dev.runtime.processes import ensure_scheduler_procfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "benches" / "development-bench"
+            (root / "config").mkdir(parents=True)
+            original = "web: frappe serve\nschedule: frappe schedule\n"
+            (root / "config" / "Procfile").write_text(original)
+            settings = SimpleNamespace(bench_name="development-bench", pilot_dir=directory)
+            with mock.patch("cohenix_dev.runtime.processes.bench_root", return_value=root):
+                ensure_scheduler_procfile(settings)
+            self.assertEqual((root / "config" / "Procfile").read_text(), original)
 
     def _reloader_bench(self, directory, reload_python=True):
         root = Path(directory) / "benches" / "development-bench"
@@ -367,12 +382,21 @@ class DevContainerLifecycleTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         data = json.loads((root / ".devcontainer" / "devcontainer.json").read_text())
         self.assertEqual(data["waitFor"], "postStartCommand")
+        self.assertEqual(data["updateContentCommand"], "/workspace/scripts/update-content.sh")
         self.assertEqual(data["postCreateCommand"], "/workspace/scripts/post-create.sh")
         self.assertEqual(data["postStartCommand"], "/workspace/scripts/start-dev.sh")
+        self.assertEqual(data["containerEnv"].get("COHENIX_DEBUGPY"), "1")
+        self.assertIn(5678, data["forwardPorts"])
 
     def test_lifecycle_scripts_are_valid_posix_sh(self):
         root = Path(__file__).resolve().parents[1]
-        for name in ("on-create.sh", "post-create.sh", "start-dev.sh", "cohenix-lifecycle.sh"):
+        for name in (
+            "on-create.sh",
+            "update-content.sh",
+            "post-create.sh",
+            "start-dev.sh",
+            "cohenix-lifecycle.sh",
+        ):
             path = root / "scripts" / name
             result = subprocess.run(["sh", "-n", str(path)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)

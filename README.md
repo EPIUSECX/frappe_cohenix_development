@@ -162,6 +162,8 @@ all read from it.
 | `devctl wait` | Block until `frappe.ping` answers on the default site. |
 | `devctl logs` | Tail Pilot process logs (`/tmp/pilot-*.log`). |
 | `devctl console` | Open a Frappe Python console on the default site. |
+| `devctl seed` | Create demo company + sample HR employees. |
+| `devctl debug enable` | Listen with debugpy on `:5678` without stopping Pilot. |
 | `devctl verify` | Fail if the provisioned environment is incomplete. |
 | `devctl status` | Short health view. |
 | `devctl start` / `stop` / `restart` | Pilot process set (web, workers, Socket.IO, Redis, scheduler). |
@@ -337,5 +339,6 @@ are not mounted by default; use GitHub credential forwarding.
 
 See [docs/MIGRATION.md](docs/MIGRATION.md) if you are coming from the previous
 installer-based container, [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md)
-for the redesign notes and Pilot limitations, and [docs/DX.md](docs/DX.md) for
-how this platform compares to public Frappe tooling and what to use daily.
+for the redesign notes and Pilot limitations, [docs/DX.md](docs/DX.md) for
+how this platform compares to public Frappe tooling, and
+[docs/CODESPACES.md](docs/CODESPACES.md) for Codespaces prebuilds.

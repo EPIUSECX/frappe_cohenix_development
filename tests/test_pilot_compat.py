@@ -26,6 +26,14 @@ class PilotCompatManifestTests(unittest.TestCase):
         still = [item for item in data["workarounds"] if item["still_required_on_pinned"]]
         self.assertGreaterEqual(len(still), 8)
 
+    def test_scheduler_workaround_dropped_on_current_canary(self):
+        path = Path(__file__).resolve().parents[1] / "config" / "pilot-compat.toml"
+        data = tomllib.loads(path.read_text())
+        self.assertEqual(data["audited_canary"], "v0.0.99-pre-alpha")
+        by_id = {item["id"]: item for item in data["workarounds"]}
+        self.assertFalse(by_id["procfile-omits-scheduler"]["still_required_on_canary"])
+        self.assertFalse(by_id["cli-packaging"]["still_required_on_canary"])
+
     def test_environment_tracks_the_newest_pilot_release(self):
         toolchain = tomllib.loads(
             (Path(__file__).resolve().parents[1] / "toolchain.toml").read_text()

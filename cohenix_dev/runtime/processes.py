@@ -47,19 +47,27 @@ def ensure_bench_config_files(settings: Settings) -> None:
     ensure_dev_reloader(settings)
 
 
-def ensure_scheduler_procfile(settings: Settings) -> None:
-    """Pilot's generated Procfile omits `frappe schedule`. Add it when missing."""
+def pilot_procfile_has_schedule(settings: Settings) -> bool:
     path = bench_root(settings) / "config" / "Procfile"
     if not path.is_file():
-        return
-    text = path.read_text(encoding="utf-8")
-    if any(line.startswith("schedule:") for line in text.splitlines()):
+        return False
+    return any(line.startswith("schedule:") for line in path.read_text(encoding="utf-8").splitlines())
+
+
+def ensure_scheduler_procfile(settings: Settings) -> None:
+    """Add `frappe schedule` only when an older Pilot Procfile still omits it.
+
+    Current Pilot releases (audited at v0.0.99+) write a schedule process
+    themselves. Keep this fallback for frozen older tags.
+    """
+    path = bench_root(settings) / "config" / "Procfile"
+    if not path.is_file() or pilot_procfile_has_schedule(settings):
         return
     python = bench_root(settings) / "env" / "bin" / "python"
     sites = bench_root(settings) / "sites"
     line = f"schedule: bash -lc 'cd {sites} && {python} -m frappe.utils.bench_helper frappe schedule'\n"
-    path.write_text(text.rstrip() + "\n" + line, encoding="utf-8")
-    cprint("Added Frappe scheduler to Pilot Procfile (upstream omits it).", level=3)
+    path.write_text(path.read_text(encoding="utf-8").rstrip() + "\n" + line, encoding="utf-8")
+    cprint("Added Frappe scheduler to Pilot Procfile (older Pilot omitted it).", level=3)
 
 
 def scheduler_running() -> bool:
@@ -73,6 +81,20 @@ def scheduler_running() -> bool:
 def ensure_scheduler_running(settings: Settings) -> None:
     ensure_scheduler_procfile(settings)
     if scheduler_running():
+        return
+    # Current Pilot starts schedule itself via Procfile. Wait briefly instead of
+    # forking a second scheduler that would fight Pilot's process manager.
+    if pilot_procfile_has_schedule(settings) and read_pid(settings):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if scheduler_running():
+                cprint("Pilot-managed Frappe scheduler is running.", level=3)
+                return
+            time.sleep(0.5)
+        cprint(
+            "Pilot Procfile includes schedule but it is not up yet; not starting a duplicate.",
+            level=3,
+        )
         return
     root = bench_root(settings)
     python = root / "env" / "bin" / "python"
@@ -95,7 +117,7 @@ def ensure_scheduler_running(settings: Settings) -> None:
     if process.poll() is not None:
         tail = (logs / "scheduler.log").read_text(errors="ignore")[-500:]
         raise CohenixError(f"Frappe scheduler exited immediately:\n{tail}")
-    cprint(f"Started Frappe scheduler as PID {process.pid} (Pilot does not start it).", level=3)
+    cprint(f"Started Frappe scheduler as PID {process.pid} (older Pilot omitted it).", level=3)
 
 
 def wait_for_port(process: subprocess.Popen[bytes], port: int, label: str, timeout: float = 20.0) -> None:

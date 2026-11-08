@@ -19,7 +19,10 @@ DEFAULT_SOCKETIO_PORT = 9000
 DEFAULT_ADMIN_PORT = 8002
 APP_HISTORY_DEPTH = 200
 SHALLOW_CLONE_MAX_COMMITS = 50
-PILOT_CLI_DEPS = ["packaging", "pymysql"]
+# packaging is vendored in Pilot >= 0.0.55; keep only pymysql for the CLI probe.
+# Older frozen tags still get packaging via the soft install path when missing.
+PILOT_CLI_DEPS = ["pymysql"]
+PILOT_CLI_DEPS_LEGACY = ["packaging", "pymysql"]
 ADMIN_DEPS_FALLBACK = [
     "flask>=3.0",
     "psutil>=5.9",

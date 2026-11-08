@@ -20,7 +20,7 @@ from cohenix_dev.config import (
     ADMIN_DEPS_FALLBACK,
     BENCH_SHIM_LEGACY_MARKERS,
     BENCH_SHIM_MARKER,
-    PILOT_CLI_DEPS,
+    PILOT_CLI_DEPS_LEGACY,
     PILOT_RELEASE_DOWNLOAD_URL,
     PILOT_RELEASES_URL,
     PILOT_SHIM_MARKER,
@@ -406,7 +406,9 @@ def ensure_pilot_cli_deps() -> None:
             "-c",
             "import importlib.util as u,sys;"
             "print(' '.join(m for m in sys.argv[1:] if u.find_spec(m) is None))",
-            *PILOT_CLI_DEPS,
+            # Probe the legacy set so frozen older Pilot tags still get packaging.
+            # Current Pilot vendors packaging; pymysql remains required.
+            *PILOT_CLI_DEPS_LEGACY,
         ],
         capture_output=True,
         text=True,

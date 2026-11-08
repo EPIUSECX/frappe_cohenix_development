@@ -56,6 +56,30 @@
       "problemMatcher": []
     },
     {
+      "label": "devctl: seed",
+      "type": "shell",
+      "command": "devctl seed",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: debug enable",
+      "type": "shell",
+      "command": "devctl debug enable",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: debug disable",
+      "type": "shell",
+      "command": "devctl debug disable",
+      "problemMatcher": []
+    },
+    {
+      "label": "devctl: debug status",
+      "type": "shell",
+      "command": "devctl debug status",
+      "problemMatcher": []
+    },
+    {
       "label": "devctl: sync",
       "type": "shell",
       "command": "devctl sync",

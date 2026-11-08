@@ -78,7 +78,8 @@
           "remoteRoot": "${workspaceFolder}/development-bench"
         }
       ],
-      "justMyCode": false
+      "justMyCode": false,
+      "preLaunchTask": "devctl: debug enable"
     }
   ],
   "compounds": [

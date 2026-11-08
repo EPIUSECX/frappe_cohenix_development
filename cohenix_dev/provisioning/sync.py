@@ -115,7 +115,9 @@ def _sync_environment(settings: Settings, reporter: StageReporter, *, verify: bo
 
 def _finish_dx(settings: Settings) -> None:
     from cohenix_dev.dx import configure_mailpit_if_present, ensure_shell_motd_hook, write_motd
+    from cohenix_dev.runtime.debugpy_hook import ensure_debugpy_for_sync
 
     configure_mailpit_if_present(settings)
+    ensure_debugpy_for_sync(settings)
     write_motd(settings)
     ensure_shell_motd_hook()
